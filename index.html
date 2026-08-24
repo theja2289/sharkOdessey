@@ -9,6 +9,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="theme-color" content="#03101F" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icon-192.png" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A6%88%3C/text%3E%3C/svg%3E" />
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@500;700;800&display=swap');
@@ -95,7 +97,7 @@
   <div style="text-align:center">
     <div class="eyebrow" style="font-size:12px">A true-facts ocean adventure</div>
     <h1 class="bigTitle">SHARK ODYSSEY</h1>
-    <p class="sub">Become 10 real sharks. Spin them in 360°. Earn badges.<br/>Drag your finger to swim!</p>
+    <p class="sub">Campaign: become 10 real sharks. Sharkpedia &amp; Abyss: 58 species!<br/>Drag your finger to swim!</p>
     <div style="font-size:13px;color:#FFD166;font-weight:800;margin:-8px 0 14px;text-shadow:0 2px 6px rgba(0,0,0,.5)">🌟 Made for Advaith &amp; Ayush 🌟</div>
     <div style="margin-bottom:16px">
       <div class="eyebrow" style="margin-bottom:7px">Dive length — snacks per zone</div>
@@ -108,6 +110,7 @@
     <div class="btnRow">
       <button class="btn" id="startBtn">🦈 Dive In</button>
       <button class="btn ghost" id="compareBtn">📊 Shark Lab</button>
+      <button class="btn ghost" id="dexBtn">📖 Sharkpedia · 58</button>
     </div>
   </div>
 </div>
@@ -136,6 +139,16 @@
     </div>
     <p class="fact" id="cardFact"></p>
     <button class="btn" id="cardBtn">Start Swimming</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="dexScr">
+  <div class="card" style="max-width:540px">
+    <div class="eyebrow">📖 Sharkpedia</div>
+    <h2 class="title" style="font-size:22px">All 58 Sharks</h2>
+    <p class="fact" style="margin-bottom:10px;font-size:12.5px">Tap any shark to spin its 3D model, see a real photo, and learn its story. You'll meet many of these in Abyss Mode!</p>
+    <div class="grid" id="dexGrid" style="max-height:52vh;overflow:auto"></div>
+    <button class="btn ghost" id="dexBack">← Back</button>
   </div>
 </div>
 
@@ -171,7 +184,7 @@
       <button class="tab" data-mode="speed">⚡ Speed</button>
       <button class="tab" data-mode="life">🎂 Lifespan</button>
     </div>
-    <div id="cmpBody"></div>
+    <div id="cmpBody" style="max-height:46vh;overflow:auto;padding-right:4px"></div>
     <p class="cmpNote" id="cmpNote"></p>
     <div style="margin-top:14px"><button class="btn ghost" id="compareBack">← Back</button></div>
   </div>
@@ -207,67 +220,311 @@
 var FISH_PER_ZONE = 10; // set by the Dive Length picker on the title screen
 
 var ZONES = [
-  { id:"blacktip", zoneName:"Coral Shallows", depthBase:5, depthSpan:20, meters:1.6,
+  { id:"blacktip", wiki:"Blacktip_reef_shark", zoneName:"Coral Shallows", depthBase:5, depthSpan:20, meters:1.6,
     sharkName:"Blacktip Reef Shark", nickname:"The Reef Patroller", size:"About 1.6 m (5 ft)",
     superpower:"Swims in water so shallow its fin pokes above the surface",
     fact:"Blacktip reef sharks cruise warm coral lagoons, sometimes in water barely deep enough to cover them. They're shy around people and get their name from the ink-dipped black tips on their fins.",
     sky:["#3FD4E0","#0F86A8"], deep:"#0A6E8F", fishColors:["#FFD166","#FF8A5C","#7BE0AD"],
     len:88, body:"#C9BC9C", belly:"#F5EFDF", finTip:"#20262E", head:"round" },
-  { id:"nurse", zoneName:"Sleepy Reef", depthBase:25, depthSpan:20, meters:3,
+  { id:"nurse", wiki:"Nurse_shark", zoneName:"Sleepy Reef", depthBase:25, depthSpan:20, meters:3,
     sharkName:"Nurse Shark", nickname:"The Seafloor Snoozer", size:"Up to 3 m (10 ft)",
     superpower:"Can breathe while lying perfectly still on the seafloor",
     fact:"Nurse sharks are the couch potatoes of the reef — they snooze in cozy piles on the seafloor all day, then hunt at night by slurping up prey like a vacuum cleaner. Unlike many sharks, they can pump water over their gills without swimming. Those little whiskers, called barbels, help them feel for hidden snacks in the sand.",
     sky:["#38C8DA","#0E81A4"], deep:"#0A6A8B", fishColors:["#FFC94A","#FF9E6D","#8CE8B9"],
     len:96, body:"#B08A5F", belly:"#E8D7BE", finTip:null, head:"round", barbels:true },
-  { id:"hammer", zoneName:"Sandy Flats", depthBase:45, depthSpan:35, meters:4.5,
+  { id:"hammer", wiki:"Great_hammerhead", zoneName:"Sandy Flats", depthBase:45, depthSpan:35, meters:4.5,
     sharkName:"Great Hammerhead", nickname:"The Living Metal Detector", size:"Up to 4.5 m (15 ft)",
     superpower:"Its wide head is packed with electric sensors",
     fact:"The hammerhead sweeps its wide, sensor-packed head over the sand like a metal detector, feeling the tiny electric signals of stingrays hiding under the seafloor. Its eyes sit at the ends of the hammer, giving it a huge field of view.",
     sky:["#2FBBD4","#0C7BA0"], deep:"#086587", fishColors:["#FFE082","#F4A261","#90E0C9"],
     len:104, body:"#9FA98F", belly:"#EFEDDC", finTip:null, head:"hammer" },
-  { id:"tiger", zoneName:"Lagoon Edge", depthBase:80, depthSpan:50, meters:4.5,
+  { id:"tiger", wiki:"Tiger_shark", zoneName:"Lagoon Edge", depthBase:80, depthSpan:50, meters:4.5,
     sharkName:"Tiger Shark", nickname:"The Taste-Tester", size:"Up to 4.5 m (15 ft)",
     superpower:"Will try to eat almost anything — even license plates",
     fact:"Young tiger sharks wear dark stripes like their jungle namesake, which fade as they grow. Tiger sharks are famous for testing-biting nearly anything — scientists have found sea turtles, birds, and even old license plates in their stomachs!",
     sky:["#22A6C4","#0A6A93"], deep:"#065579", fishColors:["#FFD166","#7BE0AD","#4FC3F7"],
     len:110, body:"#7E8C93", belly:"#EDF2F2", finTip:null, head:"round", stripes:true },
-  { id:"whale", zoneName:"Plankton Cloud", depthBase:130, depthSpan:70, meters:12,
+  { id:"whale", wiki:"Whale_shark", zoneName:"Plankton Cloud", depthBase:130, depthSpan:70, meters:12,
     sharkName:"Whale Shark", nickname:"The Gentle Giant", size:"Up to 12 m (40 ft)",
     superpower:"Biggest fish on Earth — and it eats the tiniest food",
     fact:"The whale shark is the biggest fish that has ever been measured — longer than a school bus! Yet it eats tiny drifting plankton, sipping up huge clouds of it. Every whale shark's spot pattern is unique, like a fingerprint. In this zone, slurp the glowing plankton clouds!",
     sky:["#1B93C4","#075E8C"], deep:"#054E76", fishColors:["#B6F26E","#A7F2A0","#8FE9C9"],
     len:150, body:"#3E6B8C", belly:"#D9EDF7", finTip:null, head:"whale", spots:true, food:"plankton" },
-  { id:"mako", zoneName:"Open Blue", depthBase:200, depthSpan:120, meters:4,
+  { id:"mako", wiki:"Shortfin_mako_shark", zoneName:"Open Blue", depthBase:200, depthSpan:120, meters:4,
     sharkName:"Shortfin Mako", nickname:"The Ocean Rocket", size:"Up to 4 m (13 ft)",
     superpower:"Fastest shark alive — bursts of about 70 km/h (45 mph)",
     fact:"The shortfin mako is built like a torpedo and is the fastest shark in the ocean. It can launch itself high out of the water in spectacular leaps while chasing speedy fish like tuna.",
     sky:["#0F7FB5","#075E8C"], deep:"#054A70", fishColors:["#9BE3FF","#4FC3F7","#C7F2A7"],
     len:100, body:"#2E5FA3", belly:"#EAF3FB", finTip:null, head:"point" },
-  { id:"greatwhite", zoneName:"Hunting Grounds", depthBase:320, depthSpan:180, meters:6,
+  { id:"greatwhite", wiki:"Great_white_shark", zoneName:"Hunting Grounds", depthBase:320, depthSpan:180, meters:6,
     sharkName:"Great White Shark", nickname:"The Warm-Blooded Giant", size:"Up to 6 m (20 ft)",
     superpower:"Keeps its muscles warmer than the sea around it",
     fact:"Great whites can grow longer than a car. Special heat-saving blood vessels keep their swimming muscles warm, and jelly-filled pores on their snout — the ampullae of Lorenzini — sense the tiny electric signals of hidden prey.",
     sky:["#0A6396","#032E4F"], deep:"#02243E", fishColors:["#B9C6D2","#8FB8D8","#E8D9A0"],
     len:122, body:"#8C9BA8", belly:"#F4F7F9", finTip:null, head:"point" },
-  { id:"goblin", zoneName:"Twilight Canyon", depthBase:500, depthSpan:500, meters:3.5,
+  { id:"goblin", wiki:"Goblin_shark", zoneName:"Twilight Canyon", depthBase:500, depthSpan:500, meters:3.5,
     sharkName:"Goblin Shark", nickname:"The Slingshot Jaw", size:"About 3–4 m (10–13 ft)",
     superpower:"Shoots its whole jaw forward to snatch prey",
     fact:"Deep below 270 m lives the goblin shark. When food drifts close, its jaws slingshot forward out of its face in a flash. It looks pink because its skin is thin enough to show the blood vessels underneath!",
     sky:["#0A2B49","#03142B"], deep:"#020D1E", fishColors:["#8FE9FF","#B69CFF","#FF9EC4"],
     len:104, body:"#E0A5B4", belly:"#F3D6DD", finTip:null, head:"goblin" },
-  { id:"frilled", zoneName:"Serpent's Hollow", depthBase:1000, depthSpan:500, meters:2,
+  { id:"frilled", wiki:"Frilled_shark", zoneName:"Serpent's Hollow", depthBase:1000, depthSpan:500, meters:2,
     sharkName:"Frilled Shark", nickname:"The Sea Serpent", size:"About 2 m (6.5 ft)",
     superpower:"300 needle teeth in 25 rows \u2014 a living fossil",
     fact:"Almost never seen alive, the frilled shark looks like a sea serpent \u2014 an eel-shaped 'living fossil' whose family goes back around 80 million years. Its mouth holds about 300 needle-sharp, backward-facing teeth in 25 rows, perfect for gripping slippery squid in the dark.",
     sky:["#061D33","#020B18"], deep:"#01060F", fishColors:["#7FE9D0","#9BB8FF","#FFB3D9"],
     len:118, body:"#7A6558", belly:"#93816F", finTip:null, head:"round", slim:0.17 },
-  { id:"greenland", zoneName:"Midnight Deep", depthBase:1500, depthSpan:900, meters:6,
+  { id:"greenland", wiki:"Greenland_shark", zoneName:"Midnight Deep", depthBase:1500, depthSpan:900, meters:6,
     sharkName:"Greenland Shark", nickname:"The 400-Year Wanderer", size:"Up to 6 m (20 ft)",
     superpower:"Longest-living vertebrate on Earth",
     fact:"In icy black water, the Greenland shark drifts along at about 1 km/h — slower than you walk. Scientists studying their eyes found they live at least 270 years, and maybe 400 or more. Some alive today may have been born before electricity was invented.",
     sky:["#03101F","#000509"], deep:"#000204", fishColors:["#59F5D0","#7FD0FF","#FFE082"],
     len:118, body:"#6E7B7D", belly:"#9AA6A5", finTip:null, head:"round" },
 ];
+
+var EXTRA_SPECIES = [
+  { id:"epaulette", sharkName:"Epaulette Shark", nickname:"The Reef Walker", meters:1, size:"About 1 m (3 ft)",
+    superpower:"Walks on its fins — even out of water",
+    fact:"This little shark WALKS across reef flats on its paddle-like fins, hopping between tide pools. It survives low-oxygen pools by powering down parts of its brain.",
+    wiki:"Epaulette_shark", sky:["#3FD4E0","#0F86A8"], deep:"#0A6E8F", fishColors:["#FFD166","#FF8A5C","#7BE0AD"],
+    len:70, body:"#C7A76B", belly:"#EFE3C2", finTip:null, head:"round", },
+  { id:"wobbegong", sharkName:"Tasselled Wobbegong", nickname:"The Living Carpet", meters:1.8, size:"About 1.8 m (6 ft)",
+    superpower:"Perfect seaweed camouflage with a fringed beard",
+    fact:"Flat, frilly, and patterned like the reef itself, the wobbegong lies invisible on the bottom and inhales fish that swim too close to its bearded mouth.",
+    wiki:"Tasselled_wobbegong", sky:["#3FD4E0","#0F86A8"], deep:"#0A6E8F", fishColors:["#FFD166","#FF8A5C","#7BE0AD"],
+    len:92, body:"#9A7B52", belly:"#D9C49A", finTip:null, head:"round", barbels:true, },
+  { id:"angel", sharkName:"Angelshark", nickname:"The Sand Ninja", meters:2, size:"Up to 2.4 m (8 ft)",
+    superpower:"Buries itself flat in the sand to ambush",
+    fact:"Shaped almost like a ray, the angelshark hides under a dusting of sand with only its eyes out — then snaps upward faster than you can blink.",
+    wiki:"Angelshark", sky:["#2FBBD4","#0C7BA0"], deep:"#086587", fishColors:["#FFE082","#F4A261","#90E0C9"],
+    len:95, body:"#B39B72", belly:"#E5D6B4", finTip:null, head:"round", },
+  { id:"zebra", sharkName:"Zebra Shark", nickname:"The Costume Changer", meters:2.5, size:"About 2.5 m (8 ft)",
+    superpower:"Born striped, grows up spotted",
+    fact:"Zebra shark pups wear bold zebra stripes that transform into leopard spots as they grow. Adults are gentle bottom-cruisers of coral lagoons.",
+    wiki:"Zebra_shark", sky:["#3FD4E0","#0F86A8"], deep:"#0A6E8F", fishColors:["#FFD166","#FF8A5C","#7BE0AD"],
+    len:98, body:"#C9B486", belly:"#EFE4C8", finTip:null, head:"round", spots:true, },
+  { id:"leopard", sharkName:"Leopard Shark", nickname:"The Bay Patroller", meters:1.5, size:"About 1.5 m (5 ft)",
+    superpower:"Harmless spotted beauty of shallow bays",
+    fact:"Leopard sharks cruise calm California bays in big groups, hoovering up crabs and worms. They're completely harmless to people.",
+    wiki:"Leopard_shark", sky:["#2FBBD4","#0C7BA0"], deep:"#086587", fishColors:["#FFE082","#F4A261","#90E0C9"],
+    len:82, body:"#B3A17C", belly:"#E8DDBE", finTip:null, head:"round", spots:true, },
+  { id:"horn", sharkName:"Horn Shark", nickname:"The Egg Engineer", meters:1.2, size:"About 1.2 m (4 ft)",
+    superpower:"Lays spiral eggs and screws them into rocks",
+    fact:"The horn shark lays amazing spiral-shaped eggs — and the mother wedges each one into rock cracks like a cork so waves can't steal it.",
+    wiki:"Horn_shark", sky:["#1DA98F","#075E52"], deep:"#04463E", fishColors:["#FFD166","#A7F26E","#7FD0FF"],
+    len:76, body:"#A88C5F", belly:"#DCCBA0", finTip:null, head:"round", },
+  { id:"portjackson", sharkName:"Port Jackson Shark", nickname:"The Shell Crusher", meters:1.65, size:"About 1.65 m (5.4 ft)",
+    superpower:"Pointy front teeth, flat crushing back teeth",
+    fact:"With grabby front teeth and pavement-flat back teeth, the Port Jackson shark crunches sea urchins and shellfish like living nutcrackers.",
+    wiki:"Port_Jackson_shark", sky:["#1DA98F","#075E52"], deep:"#04463E", fishColors:["#FFD166","#A7F26E","#7FD0FF"],
+    len:84, body:"#9E9077", belly:"#DED4BC", finTip:null, head:"round", stripes:true, },
+  { id:"bonnethead", sharkName:"Bonnethead", nickname:"The Salad Shark", meters:1.2, size:"About 1.2 m (4 ft)",
+    superpower:"The only shark proven to digest plants",
+    fact:"The smallest hammerhead is also the ocean's only known omnivore shark — more than half its diet can be seagrass!",
+    wiki:"Bonnethead", sky:["#2FBBD4","#0C7BA0"], deep:"#086587", fishColors:["#FFE082","#F4A261","#90E0C9"],
+    len:78, body:"#9FA98F", belly:"#EFEDDC", finTip:null, head:"hammer", },
+  { id:"scalloped", sharkName:"Scalloped Hammerhead", nickname:"The School Captain", meters:4, size:"Up to 4 m (13 ft)",
+    superpower:"Gathers in schools of hundreds",
+    fact:"By day, scalloped hammerheads swirl together in huge schools around underwater mountains — one of the ocean's greatest gatherings.",
+    wiki:"Scalloped_hammerhead", sky:["#1490C8","#065A87"], deep:"#054A70", fishColors:["#9BE3FF","#4FC3F7","#C7F2A7"],
+    len:106, body:"#8E9A85", belly:"#E8E6D4", finTip:null, head:"hammer", },
+  { id:"smoothhammer", sharkName:"Smooth Hammerhead", nickname:"The Cool-Water Hammer", meters:4, size:"Up to 4 m (13 ft)",
+    superpower:"The hammerhead that loves cooler seas",
+    fact:"Unlike its warm-water cousins, the smooth hammerhead cruises cooler oceans worldwide, sometimes gathering in big summer migrations.",
+    wiki:"Smooth_hammerhead", sky:["#1490C8","#065A87"], deep:"#054A70", fishColors:["#9BE3FF","#4FC3F7","#C7F2A7"],
+    len:106, body:"#93A093", belly:"#EAEADB", finTip:null, head:"hammer", },
+  { id:"winghead", sharkName:"Winghead Shark", nickname:"The Widest Head", meters:1.9, size:"About 1.9 m (6 ft)",
+    superpower:"Its hammer is nearly HALF its body length",
+    fact:"The winghead shark has the widest head of any hammerhead — almost half as wide as its whole body is long!",
+    wiki:"Winghead_shark", sky:["#2FBBD4","#0C7BA0"], deep:"#086587", fishColors:["#FFE082","#F4A261","#90E0C9"],
+    len:88, body:"#98A08C", belly:"#E6E6D2", finTip:null, head:"hammer", },
+  { id:"spinner", sharkName:"Spinner Shark", nickname:"The Corkscrew", meters:2, size:"About 2 m (6.5 ft)",
+    superpower:"Leaps and spins up to 3 full turns",
+    fact:"Spinner sharks rocket up through fish schools, burst into the air, and spin like a corkscrew — sometimes three whole rotations before splashing down.",
+    wiki:"Spinner_shark", sky:["#1490C8","#065A87"], deep:"#054A70", fishColors:["#9BE3FF","#4FC3F7","#C7F2A7"],
+    len:92, body:"#7F8FA0", belly:"#EDF2F5", head:"point", finTip:'#2A3540', },
+  { id:"blacktipshark", sharkName:"Blacktip Shark", nickname:"The Breacher", meters:1.9, size:"About 1.9 m (6 ft)",
+    superpower:"Famous for spinning leaps while hunting",
+    fact:"Bigger cousin of the reef blacktip, this fast coastal shark also launches spinning out of the water when chasing schools of fish.",
+    wiki:"Blacktip_shark", sky:["#1490C8","#065A87"], deep:"#054A70", fishColors:["#9BE3FF","#4FC3F7","#C7F2A7"],
+    len:94, body:"#8B9484", belly:"#EFEEE0", head:"point", finTip:'#232B33', },
+  { id:"dusky", sharkName:"Dusky Shark", nickname:"The Long Hauler", meters:4, size:"Up to 4 m (13 ft)",
+    superpower:"Swims epic coastal migrations",
+    fact:"Dusky sharks make huge seasonal journeys along coastlines — and they grow up incredibly slowly, taking about 20 years to become adults.",
+    wiki:"Dusky_shark", sky:["#1490C8","#065A87"], deep:"#054A70", fishColors:["#9BE3FF","#4FC3F7","#C7F2A7"],
+    len:108, body:"#7C8894", belly:"#E9EEF2", finTip:null, head:"point", },
+  { id:"sandbar", sharkName:"Sandbar Shark", nickname:"The Tall Fin", meters:2.5, size:"About 2.5 m (8 ft)",
+    superpower:"Sports one of the tallest dorsal fins around",
+    fact:"The sandbar shark's dorsal fin is famously tall for its body size — like a sail cruising over sandy seafloors.",
+    wiki:"Sandbar_shark", sky:["#2FBBD4","#0C7BA0"], deep:"#086587", fishColors:["#FFE082","#F4A261","#90E0C9"],
+    len:96, body:"#8E9584", belly:"#ECEBDD", finTip:null, head:"round", },
+  { id:"silky", sharkName:"Silky Shark", nickname:"The Smooth One", meters:3.3, size:"Up to 3.3 m (11 ft)",
+    superpower:"Named for its unusually smooth skin",
+    fact:"Silky sharks have such fine, tightly-packed skin scales that they feel smooth — silky — compared to other sharks' sandpaper hides.",
+    wiki:"Silky_shark", sky:["#1490C8","#065A87"], deep:"#054A70", fishColors:["#9BE3FF","#4FC3F7","#C7F2A7"],
+    len:100, body:"#8A9099", belly:"#ECF0F2", finTip:null, head:"point", },
+  { id:"oceanicwhitetip", sharkName:"Oceanic Whitetip", nickname:"The Open-Sea Wanderer", meters:3, size:"About 3 m (10 ft)",
+    superpower:"Rounded fins dipped in white paint",
+    fact:"Far from any coast, the oceanic whitetip patrols the big blue with wide, rounded fins that look dipped in white paint.",
+    wiki:"Oceanic_whitetip_shark", sky:["#1490C8","#065A87"], deep:"#054A70", fishColors:["#9BE3FF","#4FC3F7","#C7F2A7"],
+    len:100, body:"#7E8B96", belly:"#EBEFF2", head:"round", finTip:'#F4F7F9', },
+  { id:"whitetipreef", sharkName:"Whitetip Reef Shark", nickname:"The Cave Sleeper", meters:1.6, size:"About 1.6 m (5 ft)",
+    superpower:"Squeezes INTO coral holes to hunt",
+    fact:"By day they nap in piles inside caves; by night, whitetip reef sharks wriggle right into coral crevices to grab hiding fish.",
+    wiki:"Whitetip_reef_shark", sky:["#3FD4E0","#0F86A8"], deep:"#0A6E8F", fishColors:["#FFD166","#FF8A5C","#7BE0AD"],
+    len:84, body:"#8F9A8E", belly:"#EDEFE2", head:"round", finTip:'#F4F7F9', },
+  { id:"greyreef", sharkName:"Grey Reef Shark", nickname:"The Reef Guard", meters:1.9, size:"About 1.9 m (6 ft)",
+    superpower:"Warns intruders with a special arched dance",
+    fact:"Grey reef sharks perform a warning dance — back arched, fins down — that tells intruders to back off before things get serious.",
+    wiki:"Grey_reef_shark", sky:["#3FD4E0","#0F86A8"], deep:"#0A6E8F", fishColors:["#FFD166","#FF8A5C","#7BE0AD"],
+    len:92, body:"#8A939B", belly:"#ECEFF1", finTip:null, head:"round", },
+  { id:"caribbeanreef", sharkName:"Caribbean Reef Shark", nickname:"The Sleeping Shark", meters:2.5, size:"About 2.5 m (8 ft)",
+    superpower:"Rests motionless inside sea caves",
+    fact:"Divers found these sharks lying still inside caves and called them 'sleeping sharks' — they can rest on the bottom while pumping water over their gills.",
+    wiki:"Caribbean_reef_shark", sky:["#3FD4E0","#0F86A8"], deep:"#0A6E8F", fishColors:["#FFD166","#FF8A5C","#7BE0AD"],
+    len:96, body:"#84909B", belly:"#EBEFF2", finTip:null, head:"round", },
+  { id:"blue", sharkName:"Blue Shark", nickname:"The Ocean Crosser", meters:3.4, size:"Up to 3.4 m (11 ft)",
+    superpower:"Crosses entire oceans — and has 100+ pups",
+    fact:"Brilliant sapphire-blue and built like a glider, blue sharks cross whole oceans, and one mother can have more than 100 pups at once.",
+    wiki:"Blue_shark", sky:["#1490C8","#065A87"], deep:"#054A70", fishColors:["#9BE3FF","#4FC3F7","#C7F2A7"],
+    len:102, body:"#3A6BB5", belly:"#EAF3FB", finTip:null, head:"point", },
+  { id:"salmonshark", sharkName:"Salmon Shark", nickname:"The Alaska Heater", meters:2.6, size:"About 2.6 m (8.5 ft)",
+    superpower:"Keeps its body ~20°C warmer than the sea",
+    fact:"In freezing Alaskan waters, salmon sharks run hot — their bodies stay up to 20 degrees warmer than the ocean around them.",
+    wiki:"Salmon_shark", sky:["#1490C8","#065A87"], deep:"#054A70", fishColors:["#9BE3FF","#4FC3F7","#C7F2A7"],
+    len:98, body:"#5A6B78", belly:"#EDF1F4", finTip:null, head:"point", },
+  { id:"porbeagle", sharkName:"Porbeagle", nickname:"The Playful One", meters:2.5, size:"About 2.5 m (8 ft)",
+    superpower:"Seems to play with kelp for fun",
+    fact:"Porbeagles have been watched rolling in kelp and chasing drifting pieces of it — some scientists believe they're genuinely playing.",
+    wiki:"Porbeagle", sky:["#1490C8","#065A87"], deep:"#054A70", fishColors:["#9BE3FF","#4FC3F7","#C7F2A7"],
+    len:96, body:"#61707E", belly:"#EDF1F4", finTip:null, head:"point", },
+  { id:"basking", sharkName:"Basking Shark", nickname:"The Open-Mouth Giant", meters:10, size:"Up to 10 m (33 ft)",
+    superpower:"World's second-biggest fish",
+    fact:"Cruising with its cavernous mouth wide open, the basking shark strains a swimming pool's worth of water for plankton every hour or so.",
+    wiki:"Basking_shark", sky:["#1490C8","#065A87"], deep:"#054A70", fishColors:["#9BE3FF","#4FC3F7","#C7F2A7"],
+    len:145, body:"#5F6E76", belly:"#D8E4EA", finTip:null, head:"whale", food:"plankton", },
+  { id:"megamouthshark", sharkName:"Megamouth Shark", nickname:"The 1976 Surprise", meters:5.5, size:"About 5.5 m (18 ft)",
+    superpower:"Unknown to science until 1976",
+    fact:"One of the rarest big animals on Earth, the megamouth was completely unknown until 1976 — only a few hundred have ever been seen.",
+    wiki:"Megamouth_shark", sky:["#03101F","#000509"], deep:"#000204", fishColors:["#59F5D0","#7FD0FF","#FFE082"],
+    len:125, body:"#4A4E5C", belly:"#B9BFCB", finTip:null, head:"whale", food:"plankton", },
+  { id:"thresher", sharkName:"Common Thresher", nickname:"The Whip Master", meters:5.5, size:"Up to 6 m (20 ft), half of it tail!",
+    superpower:"Stuns fish with a tail as long as its body",
+    fact:"The thresher's scythe-like tail is as long as the rest of its body — it cracks it like a whip to stun whole groups of fish.",
+    wiki:"Common_thresher", sky:["#1490C8","#065A87"], deep:"#054A70", fishColors:["#9BE3FF","#4FC3F7","#C7F2A7"],
+    len:118, body:"#6E7E8C", belly:"#EBF0F3", finTip:null, head:"point", },
+  { id:"sawshark", sharkName:"Longnose Sawshark", nickname:"The Saw Face", meters:1.4, size:"About 1.4 m (4.5 ft)",
+    superpower:"A snout edged with saw teeth plus whiskers",
+    fact:"The sawshark's long snout is edged with teeth like a double-sided saw, with two whiskers halfway along to feel for buried snacks.",
+    wiki:"Longnose_sawshark", sky:["#2FBBD4","#0C7BA0"], deep:"#086587", fishColors:["#FFE082","#F4A261","#90E0C9"],
+    len:80, body:"#A08D6E", belly:"#E2D5B4", finTip:null, head:"goblin", barbels:true, },
+  { id:"cookiecutter", sharkName:"Cookiecutter Shark", nickname:"The Cookie Thief", meters:0.5, size:"About 50 cm (20 in)",
+    superpower:"Takes perfectly round glowing bites",
+    fact:"This little glowing shark sneaks up on whales and big fish and takes neat, round, cookie-shaped bites before zipping away.",
+    wiki:"Cookiecutter_shark", sky:["#03101F","#000509"], deep:"#000204", fishColors:["#59F5D0","#7FD0FF","#FFE082"],
+    len:56, body:"#6B5D52", belly:"#B7A895", finTip:null, head:"round", },
+  { id:"dwarflantern", sharkName:"Dwarf Lanternshark", nickname:"The Pocket-Sized", meters:0.2, size:"About 20 cm (8 in)",
+    superpower:"The smallest shark in the world",
+    fact:"The tiniest shark known could rest across your two hands — and its little belly glows in the deep dark.",
+    wiki:"Dwarf_lanternshark", sky:["#03101F","#000509"], deep:"#000204", fishColors:["#59F5D0","#7FD0FF","#FFE082"],
+    len:44, body:"#3E3A45", belly:"#7C7488", finTip:null, head:"round", slim:0.2, },
+  { id:"velvetbelly", sharkName:"Velvet Belly Lanternshark", nickname:"The Lightsaber", meters:0.6, size:"About 60 cm (2 ft)",
+    superpower:"Glowing defensive spines on its back",
+    fact:"This lanternshark's glowing back spines shine like tiny warning lightsabers, telling predators: don't even try.",
+    wiki:"Velvet_belly_lanternshark", sky:["#03101F","#000509"], deep:"#000204", fishColors:["#59F5D0","#7FD0FF","#FFE082"],
+    len:56, body:"#463F4C", belly:"#8A8296", finTip:null, head:"round", slim:0.2, },
+  { id:"ninja", sharkName:"Ninja Lanternshark", nickname:"The Shadow", meters:0.5, size:"About 50 cm (20 in)",
+    superpower:"Jet black, faintly glowing, named by kids",
+    fact:"Discovered in 2015, the all-black ninja lanternshark got its awesome name with help from the discovering scientist's young cousins.",
+    wiki:"Ninja_lanternshark", sky:["#03101F","#000509"], deep:"#000204", fishColors:["#59F5D0","#7FD0FF","#FFE082"],
+    len:54, body:"#23252E", belly:"#3D4150", finTip:null, head:"round", slim:0.2, },
+  { id:"pocketshark", sharkName:"American Pocket Shark", nickname:"The Glitter Pocket", meters:0.14, size:"About 14 cm (5.5 in)",
+    superpower:"Squirts glowing fluid from tiny pockets",
+    fact:"Found in 2019 and smaller than your hand, this shark has two little pockets near its fins that squirt clouds of glowing liquid!",
+    wiki:"American_pocket_shark", sky:["#03101F","#000509"], deep:"#000204", fishColors:["#59F5D0","#7FD0FF","#FFE082"],
+    len:42, body:"#4E4656", belly:"#8E8499", finTip:null, head:"round", slim:0.2, },
+  { id:"swellshark", sharkName:"Swell Shark", nickname:"The Balloon", meters:1, size:"About 1 m (3 ft)",
+    superpower:"Puffs up so it can't be pulled from cracks",
+    fact:"Threatened swell sharks gulp water and balloon up, wedging themselves into rock cracks — and under blue light, they glow green!",
+    wiki:"Swell_shark", sky:["#1DA98F","#075E52"], deep:"#04463E", fishColors:["#FFD166","#A7F26E","#7FD0FF"],
+    len:72, body:"#A88F62", belly:"#DECBA0", finTip:null, head:"round", spots:true, },
+  { id:"chaincat", sharkName:"Chain Catshark", nickname:"The Glowing Chains", meters:0.5, size:"About 50 cm (20 in)",
+    superpower:"Glows green in secret patterns",
+    fact:"Patterned like draped chains, this little shark fluoresces bright green under blue deep-sea light — a secret code other sharks can see.",
+    wiki:"Chain_catshark", sky:["#0A2B49","#03142B"], deep:"#020D1E", fishColors:["#8FE9FF","#B69CFF","#FF9EC4"],
+    len:52, body:"#8E7B5C", belly:"#D9CBAC", finTip:null, head:"round", },
+  { id:"shyshark", sharkName:"Puffadder Shyshark", nickname:"The Shy One", meters:0.6, size:"About 60 cm (2 ft)",
+    superpower:"Curls into a ring and hides its eyes",
+    fact:"When scared, this little South African shark curls into a doughnut and covers its eyes with its tail. That's why it's called shy!",
+    wiki:"Puffadder_shyshark", sky:["#2FBBD4","#0C7BA0"], deep:"#086587", fishColors:["#FFE082","#F4A261","#90E0C9"],
+    len:54, body:"#B39169", belly:"#E8D6B2", finTip:null, head:"round", },
+  { id:"pyjama", sharkName:"Pyjama Shark", nickname:"The Striped Sleeper", meters:1, size:"About 1 m (3 ft)",
+    superpower:"Wears permanent striped pyjamas",
+    fact:"Dressed in bold lengthwise stripes, the pyjama shark spends its days snoozing in kelp caves off South Africa.",
+    wiki:"Pyjama_shark", sky:["#1DA98F","#075E52"], deep:"#04463E", fishColors:["#FFD166","#A7F26E","#7FD0FF"],
+    len:70, body:"#9C8F76", belly:"#E3D8BC", finTip:null, head:"round", stripes:true, },
+  { id:"sevengill", sharkName:"Broadnose Sevengill", nickname:"The Time Traveler", meters:3, size:"About 3 m (10 ft)",
+    superpower:"Has SEVEN gill slits like ancient sharks",
+    fact:"Most sharks have five gills — the sevengill kept seven, a leftover from its prehistoric ancestors millions of years ago.",
+    wiki:"Broadnose_sevengill_shark", sky:["#1DA98F","#075E52"], deep:"#04463E", fishColors:["#FFD166","#A7F26E","#7FD0FF"],
+    len:100, body:"#7E8474", belly:"#DEDECB", finTip:null, head:"round", spots:true, },
+  { id:"sixgill", sharkName:"Bluntnose Sixgill", nickname:"The Deep Elder", meters:4.8, size:"Up to 4.8 m (16 ft)",
+    superpower:"An ancient-style giant of the deep",
+    fact:"Big, slow, and ancient in design, the sixgill rises from the deep at night to feed and sinks back down before dawn.",
+    wiki:"Bluntnose_sixgill_shark", sky:["#0A2B49","#03142B"], deep:"#020D1E", fishColors:["#8FE9FF","#B69CFF","#FF9EC4"],
+    len:118, body:"#5C6068", belly:"#AAB0B8", finTip:null, head:"round", },
+  { id:"dogfish", sharkName:"Spiny Dogfish", nickname:"The Spiny Crowd", meters:1.2, size:"About 1.2 m (4 ft)",
+    superpower:"Mildly venomous spines and huge schools",
+    fact:"Small but mighty in numbers, spiny dogfish carry mildly venomous spines and once swam in schools of thousands.",
+    wiki:"Spiny_dogfish", sky:["#1490C8","#065A87"], deep:"#054A70", fishColors:["#9BE3FF","#4FC3F7","#C7F2A7"],
+    len:70, body:"#78838E", belly:"#E6EBEF", finTip:null, head:"round", spots:true, },
+  { id:"portuguesedogfish", sharkName:"Portuguese Dogfish", nickname:"The Deepest Diver", meters:1.2, size:"About 1.2 m (4 ft)",
+    superpower:"Found 3,700 m down — a record",
+    fact:"No shark has been found deeper: Portuguese dogfish live down to about 3,700 meters, deeper than most submarines can go.",
+    wiki:"Portuguese_dogfish", sky:["#03101F","#000509"], deep:"#000204", fishColors:["#59F5D0","#7FD0FF","#FFE082"],
+    len:68, body:"#4A4038", belly:"#8A7C6E", finTip:null, head:"round", },
+  { id:"sleeper", sharkName:"Pacific Sleeper Shark", nickname:"The Silent Giant", meters:4.4, size:"Up to 4.4 m (14 ft)",
+    superpower:"Glides so smoothly it's nearly silent",
+    fact:"This cold-water giant swims with barely a ripple — so quiet it can sneak up on fast prey while barely seeming to move.",
+    wiki:"Pacific_sleeper_shark", sky:["#03101F","#000509"], deep:"#000204", fishColors:["#59F5D0","#7FD0FF","#FFE082"],
+    len:120, body:"#5E6462", belly:"#9EA5A0", finTip:null, head:"round", },
+  { id:"sandtiger", sharkName:"Sand Tiger Shark", nickname:"The Hover Shark", meters:3.2, size:"Up to 3.2 m (10.5 ft)",
+    superpower:"Gulps air to float perfectly still",
+    fact:"Sand tigers look fierce with their snaggly teeth, but they're calm — they gulp air at the surface so they can hover motionless underwater.",
+    wiki:"Sand_tiger_shark", sky:["#1DA98F","#075E52"], deep:"#04463E", fishColors:["#FFD166","#A7F26E","#7FD0FF"],
+    len:104, body:"#8C8874", belly:"#E5DFC6", finTip:null, head:"round", spots:true, },
+  { id:"bull", sharkName:"Bull Shark", nickname:"The River Explorer", meters:3.4, size:"Up to 3.4 m (11 ft)",
+    superpower:"Swims in fresh water far up rivers",
+    fact:"Bull sharks are the ocean's great explorers — they've been found far up the Mississippi and Amazon, and even leap river rapids like salmon.",
+    wiki:"Bull_shark", sky:["#2FBBD4","#0C7BA0"], deep:"#086587", fishColors:["#FFE082","#F4A261","#90E0C9"],
+    len:106, body:"#7E8880", belly:"#EAEDE4", finTip:null, head:"round", },
+  { id:"lemon", sharkName:"Lemon Shark", nickname:"The Friendly Yellow", meters:3, size:"About 3 m (10 ft)",
+    superpower:"Picks favorite friends to swim with",
+    fact:"Yellow-tinted lemon sharks are surprisingly social — studies show they choose favorite companions and hang out together again and again.",
+    wiki:"Lemon_shark", sky:["#2FBBD4","#0C7BA0"], deep:"#086587", fishColors:["#FFE082","#F4A261","#90E0C9"],
+    len:100, body:"#C9B36B", belly:"#F0E6BE", finTip:null, head:"round", },
+  { id:"bamboo", sharkName:"Bamboo Shark", nickname:"The Egg Wiggler", meters:1, size:"About 1 m (3 ft)",
+    superpower:"Visible wiggling inside its see-through egg",
+    fact:"In aquariums you can watch baby bamboo sharks wiggling inside their see-through egg cases — and they freeze if a predator's electric field passes by.",
+    wiki:"Brownbanded_bambooshark", sky:["#3FD4E0","#0F86A8"], deep:"#0A6E8F", fishColors:["#FFD166","#FF8A5C","#7BE0AD"],
+    len:68, body:"#B39A6E", belly:"#E8D9B4", finTip:null, head:"round", barbels:true, },
+  { id:"kitefin", sharkName:"Kitefin Shark", nickname:"The Biggest Glower", meters:1.4, size:"About 1.4 m (4.5 ft)",
+    superpower:"Largest glowing animal with a backbone",
+    fact:"In 2021 scientists confirmed the kitefin shark glows — making it the largest known luminous vertebrate on Earth.",
+    wiki:"Kitefin_shark", sky:["#0A2B49","#03142B"], deep:"#020D1E", fishColors:["#8FE9FF","#B69CFF","#FF9EC4"],
+    len:76, body:"#4C4550", belly:"#8E8496", finTip:null, head:"round", },
+  { id:"crocodileshark", sharkName:"Crocodile Shark", nickname:"The Big Eyes", meters:1, size:"About 1 m (3 ft)",
+    superpower:"Huge eyes for hunting in the dark",
+    fact:"With enormous glowing eyes for its size, the little crocodile shark hunts squid and fish in the darkness far below the surface.",
+    wiki:"Crocodile_shark", sky:["#0A2B49","#03142B"], deep:"#020D1E", fishColors:["#8FE9FF","#B69CFF","#FF9EC4"],
+    len:64, body:"#6E5E56", belly:"#B6A796", finTip:null, head:"point", slim:0.2, },
+  { id:"megalodon", sharkName:"Megalodon", nickname:"The Extinct Giant", meters:16, size:"Maybe 15–18 m (50–60 ft) — EXTINCT",
+    superpower:"The biggest shark that ever lived",
+    fact:"Megalodon ruled the oceans until about 3.6 million years ago. Its bite was likely the strongest of any animal ever — and no, it's not still out there!",
+    wiki:"Megalodon", sky:["#0A2B49","#03142B"], deep:"#020D1E", fishColors:["#8FE9FF","#B69CFF","#FF9EC4"],
+    len:160, body:"#5A6B78", belly:"#D5DDE2", finTip:null, head:"point", },
+];
+var ALL_SPECIES = ZONES.concat(EXTRA_SPECIES);
 
 var BONUS_FACTS = [
   { title:"Older Than Trees", emoji:"🌍", text:"Sharks have been swimming for about 450 million years — before trees existed, and long before the first dinosaurs." },
@@ -909,7 +1166,7 @@ var g = {
   surprises:[], twinsSeen:0, chestsSeen:0, lastSurprise:0,
   tunas:[], lastTuna:0, turboUntil:0, turboToastShown:false,
   quizPool:[], quizRight:0, pendingCard:null, shieldUntil:0,
-  abyss:false, abyssLevel:0, bestAbyss:0,
+  abyss:false, abyssLevel:0, bestAbyss:0, abyssSpec:null,
 };
 
 function resize(){
@@ -942,12 +1199,8 @@ var cardViewer = makeViewer($("viewer"));
 var endViewer = makeViewer($("endViewer"));
 
 /* real shark photos, fetched live from Wikipedia (CC-licensed thumbnails) */
-var PHOTO_TITLES = {
-  blacktip:"Blacktip_reef_shark", nurse:"Nurse_shark", hammer:"Great_hammerhead",
-  tiger:"Tiger_shark", whale:"Whale_shark", mako:"Shortfin_mako_shark",
-  greatwhite:"Great_white_shark", goblin:"Goblin_shark", frilled:"Frilled_shark",
-  greenland:"Greenland_shark",
-};
+var PHOTO_TITLES = {};
+ALL_SPECIES.forEach(function(s){ PHOTO_TITLES[s.id] = s.wiki; });
 var photoCache = {};
 function fetchPhotoUrl(id, cb){
   if (photoCache[id] !== undefined) return cb(photoCache[id]);
@@ -1025,6 +1278,7 @@ function setScreen(name){
   show("cardScr", name==="card");
   show("restScr", name==="rest");
   show("quizScr", name==="quiz");
+  show("dexScr", name==="dex");
   show("endScr", name==="end");
   show("compareScr", name==="compare");
   var hud = name==="play" || name==="rest";
@@ -1034,7 +1288,7 @@ function setScreen(name){
   if (name!=="end") endViewer.stop();
 }
 function updateHUD(){
-  var z = ZONES[g.zone];
+  var z = (g.abyss && g.abyssSpec) ? g.abyssSpec : ZONES[g.zone];
   if (g.abyss){
     $("zoneNum").textContent = "Abyss Lv " + (g.abyssLevel+1);
     $("zoneName").textContent = z.sharkName;
@@ -1052,7 +1306,37 @@ function updateHUD(){
   $("badgePill").textContent = "🏅 " + g.badges.length;
 }
 function starStr(n){ return "⭐".repeat(n) + "☆".repeat(3-n); }
+var browseReturn = null;
+function browseCard(spec){
+  browseReturn = "dex";
+  $("cardEyebrow").textContent = "📖 Sharkpedia · " + spec.size;
+  show("cardStars", false);
+  $("cardName").textContent = spec.sharkName;
+  $("cardNick").textContent = "\u201C" + spec.nickname + "\u201D";
+  $("cardSize").textContent = spec.size;
+  $("cardPower").textContent = spec.superpower;
+  $("cardFact").textContent = spec.fact;
+  $("cardBtn").textContent = "← Back to Sharkpedia";
+  setScreen("card");
+  currentCardSpec = spec;
+  setCardTab("3d");
+}
+function buildDex(){
+  var grid = $("dexGrid");
+  if (grid.children.length) return;
+  ALL_SPECIES.slice().sort(function(a,b){ return a.sharkName.localeCompare(b.sharkName); }).forEach(function(s){
+    var d = document.createElement("button");
+    d.className = "mini";
+    d.style.cssText = "cursor:pointer;text-align:left;font-family:inherit";
+    d.innerHTML = "<b>🦈 " + s.sharkName + (s.id==="megalodon" ? " †" : "") + "</b><p>" + s.size + "</p>";
+    d.addEventListener("click", function(){ Sound.unlock(); browseCard(s); });
+    grid.appendChild(d);
+  });
+}
+$("dexBtn").addEventListener("click", function(){ Sound.unlock(); buildDex(); setScreen("dex"); });
+$("dexBack").addEventListener("click", function(){ Sound.unlock(); setScreen("title"); });
 function showCard(zi, starsEarned){
+  browseReturn = null;
   g.cardZone = zi;
   var c = ZONES[zi];
   $("cardEyebrow").textContent = zi===0 ? "Your first shark" : "Zone " + (zi+1) + " unlocked · you transform!";
@@ -1093,7 +1377,7 @@ function floaty(x,y,txt,color){
 /* ---------- compare lab ---------- */
 var CMP = {
   size: {
-    note: "Real average maximum lengths. The whale shark ties a school bus — and megalodon (extinct) was even longer!",
+    note: "All 58 Sharkpedia sharks, smallest to biggest — from the palm-sized pocket shark to megalodon (extinct), longer than a school bus. Orange bars are for comparison: you and the bus!",
     rows: [
       {name:"You (age 7-ish)", val:1.2, label:"1.2 m", ref:true, icon:"🧒"},
       {name:"Blacktip Reef Shark", val:1.6, label:"1.6 m", icon:"🦈"},
@@ -1116,6 +1400,7 @@ var CMP = {
       {name:"Whale Shark", val:5, label:"~5 km/h", icon:"🐋"},
       {name:"Olympic Swimmer", val:8, label:"~8 km/h", ref:true, icon:"🏊"},
       {name:"Tiger Shark", val:30, label:"~30 km/h", icon:"🐯"},
+      {name:"Blue Shark", val:40, label:"~40 km/h", icon:"🦈"},
       {name:"Great White", val:40, label:"~40 km/h", icon:"🦈"},
       {name:"Shortfin Mako", val:70, label:"~70 km/h", icon:"🚀"},
     ],
@@ -1124,6 +1409,7 @@ var CMP = {
     note: "Scientists dated Greenland shark eye proteins to find their age — at least 270 years, maybe 400+. A shark alive today might have hatched before cars, planes, or lightbulbs existed.",
     rows: [
       {name:"Most Sharks", val:25, label:"20–30 yrs", icon:"🦈"},
+      {name:"Spiny Dogfish", val:70, label:"up to ~70 yrs", icon:"🌵"},
       {name:"Great White", val:70, label:"~70 yrs", icon:"🦈"},
       {name:"Human", val:80, label:"~80 yrs", ref:true, icon:"🧑"},
       {name:"Whale Shark", val:100, label:"~100 yrs", icon:"🐋"},
@@ -1131,12 +1417,24 @@ var CMP = {
     ],
   },
 };
+function sizeRows(){
+  var rows = ALL_SPECIES.map(function(s){
+    return { name: s.sharkName + (s.id==="megalodon" ? " †" : ""), val: s.meters,
+      label: s.meters < 1 ? Math.round(s.meters*100) + " cm" : s.meters + " m",
+      icon: s.head==="hammer" ? "🔨" : (s.id==="megalodon" ? "🦕" : "🦈") };
+  });
+  rows.push({ name:"You (age 7-ish)", val:1.2, label:"1.2 m", ref:true, icon:"🧒" });
+  rows.push({ name:"School Bus", val:12, label:"12 m", ref:true, icon:"🚌" });
+  rows.sort(function(a,b){ return a.val - b.val; });
+  return rows;
+}
 function renderCompare(mode){
   var data = CMP[mode];
+  var rows = mode==="size" ? sizeRows() : data.rows;
   var max = 0;
-  data.rows.forEach(function(r){ if (r.val>max) max = r.val; });
+  rows.forEach(function(r){ if (r.val>max) max = r.val; });
   var body = $("cmpBody"); body.innerHTML = "";
-  data.rows.forEach(function(r){
+  rows.forEach(function(r){
     var row = document.createElement("div"); row.className = "cmpRow";
     var top = document.createElement("div"); top.className = "cmpTop";
     top.innerHTML = "<span>" + r.icon + " " + r.name + "</span><span class='val'>" + r.label + "</span>";
@@ -1286,7 +1584,8 @@ $("againBtn").addEventListener("click", startGame);
 $("abyssBtn").addEventListener("click", function(){
   Sound.unlock(); Sound.dive(); goFullscreen(); keepAwake();
   g.abyss = true; g.abyssLevel = 0;
-  g.zone = Math.floor(Math.random()*ZONES.length);
+  g.zone = ZONES.length-1; // deep ambiance (marine snow, glow) for all abyss levels
+  g.abyssSpec = ALL_SPECIES[Math.floor(Math.random()*ALL_SPECIES.length)];
   g.meter = 0; g.hearts = 3; g.stingsThisZone = 0;
   g.fish = []; g.jellies = []; g.orbs = []; g.tunas = []; g.surprises = [];
   updateHUD();
@@ -1301,7 +1600,9 @@ document.querySelectorAll(".lenBtn").forEach(function(lb){
   });
 });
 $("cardBtn").addEventListener("click", function(){
-  Sound.unlock(); Sound.dive();
+  Sound.unlock();
+  if (browseReturn){ setScreen(browseReturn); return; }
+  Sound.dive();
   if (g.cardZone !== g.zone) g.zone = g.cardZone;
   g.stingsThisZone = 0;
   updateHUD();
@@ -1380,7 +1681,7 @@ var last = performance.now();
 function loop(now){
   var dt = Math.min(0.033,(now-last)/1000); last = now;
   var t = now/1000;
-  var zone = ZONES[g.zone];
+  var zone = (g.abyss && g.abyssSpec) ? g.abyssSpec : ZONES[g.zone];
   var playing = g.mode==="play";
   var deepZone = g.zone >= 7;
   var sh = g.shark;
@@ -1469,9 +1770,9 @@ function loop(now){
             g.abyssLevel += 1;
             if (g.abyssLevel > g.bestAbyss) g.bestAbyss = g.abyssLevel;
             if (g.abyssLevel >= 5) awardBadge("abyss5");
-            g.zone = Math.floor(Math.random()*ZONES.length);
+            g.abyssSpec = ALL_SPECIES[Math.floor(Math.random()*ALL_SPECIES.length)];
             Sound.dive();
-            floaty(sh.x, sh.y-50, "ABYSS LV " + g.abyssLevel + "!", "#B69CFF");
+            floaty(sh.x, sh.y-50, "ABYSS LV " + g.abyssLevel + ": " + g.abyssSpec.sharkName + "!", "#B69CFF");
             updateHUD();
           } else if (g.zone < ZONES.length-1){
             Sound.dive();
@@ -1845,6 +2146,13 @@ function drawChest(ctx,sp,t){
   ctx.fillText("✨", 22, -14);
   ctx.globalAlpha = 1;
   ctx.restore();
+}
+</script>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function(){
+    navigator.serviceWorker.register("sw.js").catch(function(){});
+  });
 }
 </script>
 </body>

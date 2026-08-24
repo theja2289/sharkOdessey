@@ -1,12 +1,1851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Shark Odyssey</title>
+<meta name="description" content="A true-facts shark adventure. Become 10 real sharks, spin them in 360, compare them, and earn badges." />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#03101F" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A6%88%3C/text%3E%3C/svg%3E" />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@500;700;800&display=swap');
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;overscroll-behavior:none;}
+  body{font-family:'Nunito',system-ui,sans-serif;background:#03101F;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;touch-action:none;}
+  #wrap{position:fixed;inset:0;}
+  canvas{display:block;touch-action:none;}
+  .hud{position:absolute;top:calc(6px + env(safe-area-inset-top));left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:6px 12px;pointer-events:none;gap:8px;flex-wrap:wrap;}
+  .pill{background:rgba(4,20,36,.72);backdrop-filter:blur(6px);border:1.5px solid rgba(53,224,200,.35);border-radius:999px;padding:6px 13px;color:#DFF7F2;font-weight:800;font-size:13px;display:flex;align-items:center;gap:7px;white-space:nowrap;}
+  .pill small{font-weight:700;color:#8FD8CC;font-size:10px;letter-spacing:.06em;text-transform:uppercase;}
+  #hearts span{font-size:15px;}
+  #meterBox{position:absolute;bottom:calc(10px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(420px,74vw);pointer-events:none;}
+  .track{height:14px;border-radius:999px;background:rgba(4,20,36,.7);border:1.5px solid rgba(53,224,200,.35);overflow:hidden;}
+  #fill{height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,#35E0C8,#7BE0AD);transition:width .35s cubic-bezier(.34,1.4,.5,1);}
+  #meterLabel{text-align:center;color:#BFEFE7;font-size:12px;font-weight:800;margin-top:5px;text-shadow:0 1px 3px rgba(0,0,0,.6);letter-spacing:.04em;}
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,10,20,.55);backdrop-filter:blur(3px);padding:14px;overflow:auto;}
+  .hidden{display:none !important;}
+  .card{background:linear-gradient(175deg,#0B2C46,#06182B);border:2px solid rgba(53,224,200,.5);border-radius:22px;padding:20px 20px 18px;max-width:440px;width:100%;color:#EAF7F4;box-shadow:0 24px 60px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.08);animation:pop .45s cubic-bezier(.34,1.5,.5,1);text-align:center;max-height:94vh;overflow:auto;-webkit-overflow-scrolling:touch;}
+  @keyframes pop{from{transform:translateY(26px) scale(.94);opacity:0}to{transform:none;opacity:1}}
+  @media (prefers-reduced-motion:reduce){.card{animation:none}#fill{transition:none}}
+  .eyebrow{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#35E0C8;font-weight:800;margin-bottom:5px;}
+  .title{font-family:'Baloo 2',sans-serif;font-size:27px;line-height:1.05;margin:0 0 2px;color:#fff;}
+  .nick{font-family:'Baloo 2',sans-serif;font-size:15px;color:#7BE0AD;margin-bottom:8px;}
+  .stars{font-size:18px;margin-bottom:8px;letter-spacing:2px;}
+  .viewerBox{position:relative;margin:2px auto 8px;}
+  #viewer,#endViewer{border-radius:16px;background:radial-gradient(ellipse at 50% 30%, rgba(53,224,200,.14), rgba(3,16,30,.4));border:1px solid rgba(53,224,200,.25);touch-action:none;cursor:grab;width:100%;height:auto;display:block;}
+  .spinHint{font-size:10.5px;color:#8FD8CC;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin:-2px 0 8px;}
+  .stats{display:flex;gap:7px;justify-content:center;flex-wrap:wrap;margin-bottom:11px;}
+  .stat{background:rgba(53,224,200,.1);border:1px solid rgba(53,224,200,.3);border-radius:12px;padding:6px 10px;font-size:11.5px;font-weight:700;color:#CFF3EC;text-align:left;max-width:200px;}
+  .stat b{display:block;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:#35E0C8;margin-bottom:2px;}
+  .fact{font-size:14px;line-height:1.5;color:#D8EFEA;margin:0 0 15px;}
+  .btn{font-family:'Baloo 2',sans-serif;font-size:17px;font-weight:800;background:linear-gradient(180deg,#35E0C8,#1FB8A2);color:#03222E;border:none;border-radius:999px;padding:12px 28px;cursor:pointer;box-shadow:0 6px 0 #0E7A6B,0 10px 24px rgba(0,0,0,.35);transition:transform .1s;}
+  .btn:active{transform:translateY(4px);box-shadow:0 2px 0 #0E7A6B;}
+  .btn.ghost{background:transparent;color:#8FD8CC;box-shadow:none;border:2px solid rgba(53,224,200,.4);font-size:14px;padding:9px 18px;}
+  .btnRow{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;}
+  .bigTitle{font-family:'Baloo 2',sans-serif;font-size:clamp(36px,10vw,62px);color:#fff;margin:0;line-height:1;text-shadow:0 4px 0 rgba(4,40,60,.6),0 12px 30px rgba(0,0,0,.4);}
+  .sub{color:#CFF3EC;font-size:14.5px;font-weight:700;margin:10px 0 20px;text-shadow:0 2px 6px rgba(0,0,0,.5);}
+  #toast{position:absolute;bottom:calc(64px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(400px,88vw);background:linear-gradient(175deg,#0B3C40,#06232B);border:2px solid rgba(123,224,173,.55);border-radius:16px;padding:11px 14px;color:#EAF7F4;box-shadow:0 16px 40px rgba(0,0,0,.5);animation:pop .4s cubic-bezier(.34,1.5,.5,1);pointer-events:none;z-index:6;}
+  #toast b{font-family:'Baloo 2',sans-serif;color:#7BE0AD;font-size:14.5px;display:block;margin-bottom:2px;}
+  #toast p{margin:0;font-size:12.5px;line-height:1.45;}
+  #toast.badge{border-color:#FFD166;background:linear-gradient(175deg,#3A2E0B,#241C06);}
+  #toast.badge b{color:#FFD166;}
+  #mute{position:absolute;top:calc(6px + env(safe-area-inset-top));right:12px;background:rgba(4,20,36,.72);border:1.5px solid rgba(53,224,200,.35);border-radius:999px;width:40px;height:40px;font-size:16px;cursor:pointer;color:#DFF7F2;z-index:5;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:left;margin-bottom:13px;}
+  .mini{background:rgba(53,224,200,.08);border:1px solid rgba(53,224,200,.28);border-radius:12px;padding:9px;}
+  .mini b{font-family:'Baloo 2',sans-serif;font-size:12.5px;color:#7BE0AD;display:block;margin-bottom:2px;}
+  .mini p{margin:0;font-size:11px;line-height:1.4;color:#CDEAE4;}
+  .mini.locked{opacity:.35;filter:grayscale(1);}
+  .mini.gold{border-color:rgba(255,209,102,.5);background:rgba(255,209,102,.08);}
+  .mini.gold b{color:#FFD166;}
+  .sectionTitle{font-family:'Baloo 2',sans-serif;font-size:15px;color:#35E0C8;margin:12px 0 7px;text-align:left;}
+  .tabs{display:flex;gap:6px;justify-content:center;margin-bottom:13px;flex-wrap:wrap;}
+  .tab{font-family:'Baloo 2',sans-serif;font-size:13.5px;font-weight:800;background:rgba(53,224,200,.1);color:#8FD8CC;border:1.5px solid rgba(53,224,200,.3);border-radius:999px;padding:7px 15px;cursor:pointer;}
+  .tab.active{background:#35E0C8;color:#03222E;}
+  .cmpRow{margin-bottom:9px;text-align:left;}
+  .cmpTop{display:flex;justify-content:space-between;font-size:12px;font-weight:800;color:#DFF7F2;margin-bottom:3px;gap:8px;}
+  .cmpTop .val{color:#7BE0AD;white-space:nowrap;}
+  .cmpBarTrack{height:16px;border-radius:8px;background:rgba(4,20,36,.6);overflow:hidden;border:1px solid rgba(53,224,200,.18);}
+  .cmpBar{height:100%;border-radius:8px;background:linear-gradient(90deg,#35E0C8,#7BE0AD);transition:width .6s cubic-bezier(.3,1.2,.4,1);display:flex;align-items:center;padding-left:6px;font-size:10px;}
+  .cmpBar.ref{background:linear-gradient(90deg,#FF8A5C,#FFD166);}
+  .cmpNote{font-size:11px;color:#9BC8BF;text-align:left;margin-top:8px;line-height:1.45;}
+  .badgePill{position:absolute;top:calc(52px + env(safe-area-inset-top));right:12px;pointer-events:none;background:rgba(58,46,11,.8);border:1.5px solid rgba(255,209,102,.5);border-radius:999px;padding:5px 12px;color:#FFD166;font-weight:800;font-size:12px;z-index:4;}
+  #startPrompt{font-size:12px;color:#9BC8BF;margin-top:12px;}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv"></canvas></div>
 
-🔊
-A TRUE-FACTS OCEAN ADVENTURE
-SHARK ODYSSEY
-Become 10 real sharks. Spin them in 360°. Earn badges. Drag your finger to swim!
-🌟 Made for Advaith & Ayush 🌟
-DIVE LENGTH — SNACKS PER ZONE
-🐟 Quick · 6
-🐟🐟 Classic · 10
-🐟🐟🐟 Mega · 15
-🦈 Dive In
-📊 Shark Lab
+<div class="hud hidden" id="hud">
+  <div class="pill"><small id="zoneNum">Zone 1/8</small> <span id="zoneName"></span></div>
+  <div class="pill"><small>Depth</small> <span id="depth"></span></div>
+  <div class="pill" id="hearts"><span>❤️</span><span>❤️</span><span>❤️</span></div>
+</div>
+<div id="badgePill" class="badgePill hidden">🏅 0</div>
+<div id="meterBox" class="hidden">
+  <div class="track"><div id="fill"></div></div>
+  <div id="meterLabel"></div>
+</div>
+<button id="mute" aria-label="Toggle sound">🔊</button>
+<div id="toast" class="hidden"><b id="toastTitle"></b><p id="toastText"></p></div>
+
+<div class="overlay" id="titleScr" style="background:rgba(2,10,20,.25)">
+  <div style="text-align:center">
+    <div class="eyebrow" style="font-size:12px">A true-facts ocean adventure</div>
+    <h1 class="bigTitle">SHARK ODYSSEY</h1>
+    <p class="sub">Become 10 real sharks. Spin them in 360°. Earn badges.<br/>Drag your finger to swim!</p>
+    <div style="font-size:13px;color:#FFD166;font-weight:800;margin:-8px 0 14px;text-shadow:0 2px 6px rgba(0,0,0,.5)">🌟 Made for Advaith &amp; Ayush 🌟</div>
+    <div style="margin-bottom:16px">
+      <div class="eyebrow" style="margin-bottom:7px">Dive length — snacks per zone</div>
+      <div class="tabs" style="margin-bottom:0">
+        <button class="tab lenBtn" data-len="6">🐟 Quick · 6</button>
+        <button class="tab lenBtn active" data-len="10">🐟🐟 Classic · 10</button>
+        <button class="tab lenBtn" data-len="15">🐟🐟🐟 Mega · 15</button>
+      </div>
+    </div>
+    <div class="btnRow">
+      <button class="btn" id="startBtn">🦈 Dive In</button>
+      <button class="btn ghost" id="compareBtn">📊 Shark Lab</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="cardScr">
+  <div class="card">
+    <div class="eyebrow" id="cardEyebrow"></div>
+    <div class="stars hidden" id="cardStars"></div>
+    <h2 class="title" id="cardName"></h2>
+    <div class="nick" id="cardNick"></div>
+    <div class="tabs" style="margin-bottom:7px">
+      <button class="tab active" id="tab3d">🧊 3D Model</button>
+      <button class="tab" id="tabPhoto">📸 Real Photo</button>
+    </div>
+    <div class="viewerBox">
+      <canvas id="viewer" width="360" height="170"></canvas>
+      <div id="photoBox" class="hidden" style="border-radius:16px;overflow:hidden;border:1px solid rgba(53,224,200,.25);background:#04141F;min-height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center">
+        <img id="photoImg" alt="Real shark photo" style="display:none;width:100%;max-height:220px;object-fit:cover" />
+        <div id="photoCap" style="font-size:10.5px;color:#8FD8CC;font-weight:700;padding:6px"></div>
+      </div>
+    </div>
+    <div class="spinHint" id="spinHintTxt">↺ drag the shark to spin it around</div>
+    <div class="stats">
+      <div class="stat"><b>Size</b><span id="cardSize"></span></div>
+      <div class="stat"><b>Superpower</b><span id="cardPower"></span></div>
+    </div>
+    <p class="fact" id="cardFact"></p>
+    <button class="btn" id="cardBtn">Start Swimming</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="quizScr">
+  <div class="card">
+    <div class="eyebrow">🧩 Quick Quiz — worth bonus snacks!</div>
+    <h2 class="title" style="font-size:21px" id="quizQ"></h2>
+    <div id="quizOpts" style="display:flex;flex-direction:column;gap:9px;margin:14px 0 6px"></div>
+    <p class="fact hidden" id="quizFeedback" style="margin-top:10px"></p>
+    <button class="btn hidden" id="quizNext">Keep Diving ↓</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="restScr">
+  <div class="card">
+    <div class="eyebrow">Ouch — three stings!</div>
+    <h2 class="title">Jellyfish Tangle!</h2>
+    <p class="fact">Even real sharks steer around jellyfish — those tentacles carry thousands of tiny stinging cells. Shake it off and keep hunting. Your fish count is safe!</p>
+    <p class="fact" style="background:rgba(53,224,200,.08);border:1px solid rgba(53,224,200,.25);border-radius:12px;padding:10px;font-size:12.5px" id="restFact"></p>
+    <div class="btnRow">
+      <button class="btn" id="restBtn">Swim Again</button>
+      <button class="btn ghost hidden" id="restExitBtn">🏁 Back to Trophies</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="compareScr">
+  <div class="card" style="max-width:480px">
+    <div class="eyebrow">The Shark Lab</div>
+    <h2 class="title">Compare the Sharks</h2>
+    <div class="tabs">
+      <button class="tab active" data-mode="size">📏 Size</button>
+      <button class="tab" data-mode="speed">⚡ Speed</button>
+      <button class="tab" data-mode="life">🎂 Lifespan</button>
+    </div>
+    <div id="cmpBody"></div>
+    <p class="cmpNote" id="cmpNote"></p>
+    <div style="margin-top:14px"><button class="btn ghost" id="compareBack">← Back</button></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="endScr">
+  <div class="card" style="max-width:540px">
+    <div class="eyebrow">You reached the midnight deep!</div>
+    <h2 class="title">🏆 Shark Experts: Advaith &amp; Ayush</h2>
+    <p class="fact" style="margin:2px 0 8px;font-size:12px;color:#9BC8BF">Made with ❤️ for you · guardian seahorse sisters Mochi (Atisha) &amp; Boba (Sofia) 🌟🌟</p>
+    <p class="fact" style="margin-bottom:8px" id="endSummary"></p>
+    <div class="viewerBox"><canvas id="endViewer" width="360" height="150"></canvas></div>
+    <div class="spinHint">↺ your final form — the Greenland shark</div>
+    <div class="sectionTitle">⭐ Zone Stars</div>
+    <div class="grid" id="starGrid" style="grid-template-columns:1fr 1fr 1fr 1fr"></div>
+    <div class="sectionTitle">🏅 Badges</div>
+    <div class="grid" id="badgeGrid"></div>
+    <div class="sectionTitle">📸 Real Shark Gallery</div>
+    <div class="grid" id="photoGrid" style="grid-template-columns:1fr 1fr 1fr"></div>
+    <div class="sectionTitle">🔬 Shark Science Collected</div>
+    <div class="grid" id="factGrid"></div>
+    <div class="btnRow" style="margin-top:6px">
+      <button class="btn" id="againBtn">Dive Again</button>
+      <button class="btn" id="abyssBtn" style="background:linear-gradient(180deg,#B69CFF,#8E6FE0);box-shadow:0 6px 0 #5E44A8,0 10px 24px rgba(0,0,0,.35)">🌌 Abyss Mode</button>
+      <button class="btn ghost" id="endCompareBtn">📊 Shark Lab</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="window.__NO3D=1"></script>
+<script>
+"use strict";
+var FISH_PER_ZONE = 10; // set by the Dive Length picker on the title screen
+
+var ZONES = [
+  { id:"blacktip", zoneName:"Coral Shallows", depthBase:5, depthSpan:20, meters:1.6,
+    sharkName:"Blacktip Reef Shark", nickname:"The Reef Patroller", size:"About 1.6 m (5 ft)",
+    superpower:"Swims in water so shallow its fin pokes above the surface",
+    fact:"Blacktip reef sharks cruise warm coral lagoons, sometimes in water barely deep enough to cover them. They're shy around people and get their name from the ink-dipped black tips on their fins.",
+    sky:["#3FD4E0","#0F86A8"], deep:"#0A6E8F", fishColors:["#FFD166","#FF8A5C","#7BE0AD"],
+    len:88, body:"#C9BC9C", belly:"#F5EFDF", finTip:"#20262E", head:"round" },
+  { id:"nurse", zoneName:"Sleepy Reef", depthBase:25, depthSpan:20, meters:3,
+    sharkName:"Nurse Shark", nickname:"The Seafloor Snoozer", size:"Up to 3 m (10 ft)",
+    superpower:"Can breathe while lying perfectly still on the seafloor",
+    fact:"Nurse sharks are the couch potatoes of the reef — they snooze in cozy piles on the seafloor all day, then hunt at night by slurping up prey like a vacuum cleaner. Unlike many sharks, they can pump water over their gills without swimming. Those little whiskers, called barbels, help them feel for hidden snacks in the sand.",
+    sky:["#38C8DA","#0E81A4"], deep:"#0A6A8B", fishColors:["#FFC94A","#FF9E6D","#8CE8B9"],
+    len:96, body:"#B08A5F", belly:"#E8D7BE", finTip:null, head:"round", barbels:true },
+  { id:"hammer", zoneName:"Sandy Flats", depthBase:45, depthSpan:35, meters:4.5,
+    sharkName:"Great Hammerhead", nickname:"The Living Metal Detector", size:"Up to 4.5 m (15 ft)",
+    superpower:"Its wide head is packed with electric sensors",
+    fact:"The hammerhead sweeps its wide, sensor-packed head over the sand like a metal detector, feeling the tiny electric signals of stingrays hiding under the seafloor. Its eyes sit at the ends of the hammer, giving it a huge field of view.",
+    sky:["#2FBBD4","#0C7BA0"], deep:"#086587", fishColors:["#FFE082","#F4A261","#90E0C9"],
+    len:104, body:"#9FA98F", belly:"#EFEDDC", finTip:null, head:"hammer" },
+  { id:"tiger", zoneName:"Lagoon Edge", depthBase:80, depthSpan:50, meters:4.5,
+    sharkName:"Tiger Shark", nickname:"The Taste-Tester", size:"Up to 4.5 m (15 ft)",
+    superpower:"Will try to eat almost anything — even license plates",
+    fact:"Young tiger sharks wear dark stripes like their jungle namesake, which fade as they grow. Tiger sharks are famous for testing-biting nearly anything — scientists have found sea turtles, birds, and even old license plates in their stomachs!",
+    sky:["#22A6C4","#0A6A93"], deep:"#065579", fishColors:["#FFD166","#7BE0AD","#4FC3F7"],
+    len:110, body:"#7E8C93", belly:"#EDF2F2", finTip:null, head:"round", stripes:true },
+  { id:"whale", zoneName:"Plankton Cloud", depthBase:130, depthSpan:70, meters:12,
+    sharkName:"Whale Shark", nickname:"The Gentle Giant", size:"Up to 12 m (40 ft)",
+    superpower:"Biggest fish on Earth — and it eats the tiniest food",
+    fact:"The whale shark is the biggest fish that has ever been measured — longer than a school bus! Yet it eats tiny drifting plankton, sipping up huge clouds of it. Every whale shark's spot pattern is unique, like a fingerprint. In this zone, slurp the glowing plankton clouds!",
+    sky:["#1B93C4","#075E8C"], deep:"#054E76", fishColors:["#B6F26E","#A7F2A0","#8FE9C9"],
+    len:150, body:"#3E6B8C", belly:"#D9EDF7", finTip:null, head:"whale", spots:true, food:"plankton" },
+  { id:"mako", zoneName:"Open Blue", depthBase:200, depthSpan:120, meters:4,
+    sharkName:"Shortfin Mako", nickname:"The Ocean Rocket", size:"Up to 4 m (13 ft)",
+    superpower:"Fastest shark alive — bursts of about 70 km/h (45 mph)",
+    fact:"The shortfin mako is built like a torpedo and is the fastest shark in the ocean. It can launch itself high out of the water in spectacular leaps while chasing speedy fish like tuna.",
+    sky:["#0F7FB5","#075E8C"], deep:"#054A70", fishColors:["#9BE3FF","#4FC3F7","#C7F2A7"],
+    len:100, body:"#2E5FA3", belly:"#EAF3FB", finTip:null, head:"point" },
+  { id:"greatwhite", zoneName:"Hunting Grounds", depthBase:320, depthSpan:180, meters:6,
+    sharkName:"Great White Shark", nickname:"The Warm-Blooded Giant", size:"Up to 6 m (20 ft)",
+    superpower:"Keeps its muscles warmer than the sea around it",
+    fact:"Great whites can grow longer than a car. Special heat-saving blood vessels keep their swimming muscles warm, and jelly-filled pores on their snout — the ampullae of Lorenzini — sense the tiny electric signals of hidden prey.",
+    sky:["#0A6396","#032E4F"], deep:"#02243E", fishColors:["#B9C6D2","#8FB8D8","#E8D9A0"],
+    len:122, body:"#8C9BA8", belly:"#F4F7F9", finTip:null, head:"point" },
+  { id:"goblin", zoneName:"Twilight Canyon", depthBase:500, depthSpan:500, meters:3.5,
+    sharkName:"Goblin Shark", nickname:"The Slingshot Jaw", size:"About 3–4 m (10–13 ft)",
+    superpower:"Shoots its whole jaw forward to snatch prey",
+    fact:"Deep below 270 m lives the goblin shark. When food drifts close, its jaws slingshot forward out of its face in a flash. It looks pink because its skin is thin enough to show the blood vessels underneath!",
+    sky:["#0A2B49","#03142B"], deep:"#020D1E", fishColors:["#8FE9FF","#B69CFF","#FF9EC4"],
+    len:104, body:"#E0A5B4", belly:"#F3D6DD", finTip:null, head:"goblin" },
+  { id:"frilled", zoneName:"Serpent's Hollow", depthBase:1000, depthSpan:500, meters:2,
+    sharkName:"Frilled Shark", nickname:"The Sea Serpent", size:"About 2 m (6.5 ft)",
+    superpower:"300 needle teeth in 25 rows \u2014 a living fossil",
+    fact:"Almost never seen alive, the frilled shark looks like a sea serpent \u2014 an eel-shaped 'living fossil' whose family goes back around 80 million years. Its mouth holds about 300 needle-sharp, backward-facing teeth in 25 rows, perfect for gripping slippery squid in the dark.",
+    sky:["#061D33","#020B18"], deep:"#01060F", fishColors:["#7FE9D0","#9BB8FF","#FFB3D9"],
+    len:118, body:"#7A6558", belly:"#93816F", finTip:null, head:"round", slim:0.17 },
+  { id:"greenland", zoneName:"Midnight Deep", depthBase:1500, depthSpan:900, meters:6,
+    sharkName:"Greenland Shark", nickname:"The 400-Year Wanderer", size:"Up to 6 m (20 ft)",
+    superpower:"Longest-living vertebrate on Earth",
+    fact:"In icy black water, the Greenland shark drifts along at about 1 km/h — slower than you walk. Scientists studying their eyes found they live at least 270 years, and maybe 400 or more. Some alive today may have been born before electricity was invented.",
+    sky:["#03101F","#000509"], deep:"#000204", fishColors:["#59F5D0","#7FD0FF","#FFE082"],
+    len:118, body:"#6E7B7D", belly:"#9AA6A5", finTip:null, head:"round" },
+];
+
+var BONUS_FACTS = [
+  { title:"Older Than Trees", emoji:"🌍", text:"Sharks have been swimming for about 450 million years — before trees existed, and long before the first dinosaurs." },
+  { title:"Skin Made of Teeth", emoji:"🦷", text:"Shark skin is covered in millions of tiny tooth-like scales called dermal denticles. They make sharks fast and almost silent in the water." },
+  { title:"30,000 Teeth", emoji:"😁", text:"Sharks never run out of teeth — new ones move forward like a conveyor belt. A shark can grow tens of thousands of teeth in its lifetime." },
+  { title:"No Bones About It", emoji:"🦴", text:"Sharks have no bones at all! Their skeletons are made of cartilage — the same bendy stuff in your ears and nose." },
+  { title:"Electric Sense", emoji:"⚡", text:"All sharks have a sixth sense: jelly-filled pores called ampullae of Lorenzini that feel the faint electricity made by other animals' muscles." },
+  { title:"Meet Megalodon", emoji:"🦕", text:"The ancient megalodon may have reached 15–18 m — one tooth is bigger than your hand! It went extinct over 3 million years ago." },
+  { title:"Keep Swimming", emoji:"🌀", text:"Some sharks, like great whites and makos, must keep swimming to push water over their gills. Others can rest and pump water with their mouths." },
+  { title:"Super Sniffer", emoji:"👃", text:"A huge part of a shark's brain is for smell. Some sharks can sniff out prey from hundreds of meters away." },
+  { title:"Glow in the Dark", emoji:"✨", text:"Some deep-sea sharks, like the lanternshark, make their own light — their bellies glow to hide their shadow from creatures below." },
+  { title:"The Walking Shark", emoji:"🚶", text:"The epaulette shark can WALK! It wriggles across reef flats on its fins, even out of water between tide pools." },
+  { title:"Master of Disguise", emoji:"🎭", text:"The wobbegong, or carpet shark, looks exactly like a shaggy piece of seaweed-covered reef — until dinner swims too close." },
+  { title:"Oily Life Jacket", emoji:"🫒", text:"Sharks have no swim bladder like other fish. Instead, a giant oily liver keeps them from sinking." },
+  { title:"Hammerhead Parties", emoji:"🎉", text:"Scalloped hammerheads gather in huge schools of hundreds during the day — one of the ocean's most amazing sights." },
+  { title:"Coming Home", emoji:"🏠", text:"Lemon sharks remember where they were born, and mothers travel back to that exact lagoon to have their own pups." },
+  { title:"Mermaid's Purses", emoji:"👛", text:"Some sharks lay eggs in leathery cases called mermaid's purses. You can sometimes find empty ones washed up on beaches!" },
+  { title:"The Puffer Trick", emoji:"🎈", text:"The swell shark gulps water to puff up like a balloon, wedging itself into rock cracks so predators can't pull it out." },
+  { title:"The Cookie Thief", emoji:"🍪", text:"The little cookiecutter shark takes perfectly round, cookie-shaped bites out of whales and big fish — and its belly glows." },
+  { title:"No Chewing Allowed", emoji:"🍽️", text:"Sharks can't chew! They gulp food whole or shake off pieces and swallow them." },
+  { title:"Saw Face", emoji:"🪚", text:"Sawsharks have a long snout edged with teeth like a saw, plus two whiskers in the middle to feel for buried food." },
+  { title:"The Tail Whip", emoji:"🎯", text:"The thresher shark's tail is as long as its whole body. It cracks it like a whip to stun fish before eating them." },
+  { title:"The Second Giant", emoji:"🐋", text:"The basking shark is the world's second-biggest fish. It swims with its huge mouth wide open, straining tiny plankton." },
+  { title:"A Brand-New Shark", emoji:"🆕", text:"The megamouth shark was only discovered in 1976! Fewer than a few hundred have ever been seen." },
+  { title:"Night-Vision Eyes", emoji:"🌙", text:"Shark eyes have a mirror layer, just like cats' eyes, so they can see in dark, deep water." },
+  { title:"Ocean Marathoner", emoji:"🗺️", text:"Blue sharks cross entire oceans. One shark can travel thousands of kilometers in a single journey." },
+  { title:"The River Shark", emoji:"🏞️", text:"Bull sharks can swim in fresh water! They've been found far up big rivers like the Mississippi and the Amazon." },
+  { title:"Built-In Goggles", emoji:"🥽", text:"Many sharks have a see-through extra eyelid to protect their eyes while hunting. Great whites roll their eyes back instead!" },
+  { title:"Brave From Day One", emoji:"👶", text:"Baby sharks are called pups, and most look after themselves from the moment they're born — no shark school needed." },
+  { title:"The Stomach Rinse", emoji:"🌊", text:"Some sharks can push their whole stomach out through their mouth, rinse it in seawater, and pull it back in. Clean-up done!" },
+  { title:"Two Kinds of Teeth", emoji:"🥜", text:"The Port Jackson shark has pointy front teeth for grabbing and flat back teeth for crushing crunchy shells and sea urchins." },
+  { title:"The Pocket Shark", emoji:"🤏", text:"The smallest shark, the dwarf lanternshark, is about 20 cm long — it would fit in your two hands." },
+  { title:"Feeling the Water", emoji:"〰️", text:"A line of sensors along a shark's body — the lateral line — feels tiny ripples, so sharks sense splashes from far away." },
+  { title:"Sharkcano!", emoji:"🌋", text:"Scientists found sharks living inside the crater of Kavachi, an active underwater volcano. They nicknamed it Sharkcano." },
+  { title:"Treasure Teeth", emoji:"💎", text:"Shark teeth turn into fossils! People find fossil shark teeth — some millions of years old — on ordinary beaches." },
+  { title:"The Flying Shark", emoji:"🚀", text:"Great whites near Seal Island launch completely out of the water when hunting — a move called breaching." },
+  { title:"The Hover Trick", emoji:"🎈", text:"Sand tiger sharks gulp air at the surface and hold it in their stomachs so they can hover perfectly still underwater." },
+  { title:"Ocean Heroes", emoji:"💙", text:"Sharks keep ocean food webs healthy and balanced. Protecting sharks protects the whole ocean — they need our help, not our fear." },
+  { title:"Breathing Holes", emoji:"🕳️", text:"Many bottom-resting sharks have small holes behind their eyes, called spiracles, that pull in water so they can breathe while sitting still." },
+  { title:"The Sand Ninja", emoji:"🥷", text:"Angel sharks are flat like pancakes. They bury themselves in sand with just their eyes showing — then explode upward to grab passing fish." },
+  { title:"A Liver Like a Backpack", emoji:"🎒", text:"A shark's oily liver can be a quarter of its whole body weight — it's fuel tank and life jacket in one." },
+  { title:"Armor-Plated Giant", emoji:"🛡️", text:"Whale shark skin can be about 10 cm thick — some of the thickest skin of any animal alive." },
+  { title:"Six-Meter Jump", emoji:"🤸", text:"Shortfin makos can leap about 6 meters out of the water — higher than a two-story house." },
+  { title:"Rumble Radar", emoji:"🔊", text:"Sharks hear deep, low rumbles best — like the thrashing of a struggling fish — from very far away." },
+  { title:"100 Baby Sharks", emoji:"🍼", text:"A mother blue shark can give birth to more than 100 pups in a single litter!" },
+  { title:"The Smelly Delicacy", emoji:"🤢", text:"Greenland shark meat is poisonous when fresh — in Iceland it's buried and dried for months to make a famously stinky food called hákarl." },
+  { title:"Glowing Eye Guests", emoji:"💡", text:"Many Greenland sharks carry small glowing creatures attached to their eyes — scientists think the glow may even lure prey close." },
+  { title:"Heated Goggles", emoji:"🔥", text:"Makos keep their eyes and brain warmer than the sea around them, so their vision stays razor-sharp in cold water." },
+  { title:"The Alaska Heater", emoji:"🌡️", text:"Salmon sharks swim in freezing Alaskan seas while keeping their bodies up to 20°C warmer than the water — like wearing a built-in wetsuit." },
+  { title:"Sharks That Play", emoji:"🪁", text:"Porbeagle sharks have been seen rolling in kelp and chasing pieces of it — some scientists think they're playing." },
+  { title:"Shark School", emoji:"🎓", text:"Aquarium sharks can be trained! They learn to swim to their own target shape at feeding time." },
+  { title:"Shark Personalities", emoji:"🎭", text:"Just like people, individual sharks can be bold or shy — scientists tested this with catsharks and found real personalities." },
+  { title:"No Hands, So They Nibble", emoji:"🤔", text:"Sharks have no hands, so they investigate strange objects with gentle test nibbles — it's curiosity, not hunger." },
+  { title:"The Living Filter", emoji:"🚿", text:"A basking shark cruising with its mouth open strains a swimming pool's worth of water for plankton every hour or so." },
+  { title:"The Tide-Pool Survivor", emoji:"🌗", text:"Epaulette sharks can survive hours in tide pools with almost no oxygen by powering down parts of their brain — then walking to the next pool!" },
+  { title:"Window Into an Egg", emoji:"🪟", text:"Bamboo shark egg cases are see-through in the light — you can watch the tiny pup wiggling inside as it grows." },
+  { title:"The Ninja Shark", emoji:"🖤", text:"The ninja lanternshark — jet black, deep-sea, and faintly glowing — was discovered in 2015 and named with help from the scientist's young cousins." },
+  { title:"The Pocket Shark", emoji:"👝", text:"The American pocket shark, found in 2019, is tiny and has two little pockets near its fins that squirt glowing fluid!" },
+  { title:"Ghost Cousins", emoji:"👻", text:"Deep below live chimaeras, also called ghost sharks — pale, big-eyed cousins of sharks that flap wing-like fins." },
+  { title:"The Flat Family", emoji:"🥞", text:"Rays and skates are sharks' closest cousins — basically flattened sharks with their gills underneath." },
+  { title:"The Coral Squeezer", emoji:"🪸", text:"Whitetip reef sharks hunt at night by wriggling INTO coral holes to grab hiding fish other sharks can't reach." },
+  { title:"The Corkscrew", emoji:"🌪️", text:"Spinner sharks charge upward through fish schools, burst out of the water, and spin like a corkscrew — sometimes three whole turns!" },
+  { title:"The Salad-Eating Shark", emoji:"🥗", text:"The bonnethead is the first shark ever proven to digest plants — over half its diet can be seagrass. A real omnivore shark!" },
+  { title:"Stripes to Spots", emoji:"🦓", text:"Zebra sharks are born with zebra stripes that slowly turn into leopard spots as they grow up. Talk about a costume change!" },
+  { title:"The Spiral Egg", emoji:"🌀", text:"Horn sharks lay spiral-shaped eggs, and the mother wedges each one into rock cracks like screwing in a cork." },
+  { title:"Megalodon Nurseries", emoji:"🏫", text:"Fossil hunters have found ancient shallow bays full of small megalodon teeth — nurseries where the giant babies grew up safely." },
+  { title:"The Buzzsaw Mystery", emoji:"🌀", text:"An ancient shark cousin called Helicoprion grew its teeth in a spiral, like a buzzsaw inside its lower jaw. Fossils puzzled scientists for 100 years!" },
+  { title:"The Great Survivors", emoji:"☄️", text:"Sharks have survived all five of Earth's great mass extinctions — including the asteroid that ended the dinosaurs." },
+  { title:"The Longest Wait", emoji:"⏳", text:"Frilled sharks may be pregnant for around 3.5 years — possibly the longest pregnancy of any animal with a backbone." },
+  { title:"The Spiny Crowd", emoji:"🌵", text:"Spiny dogfish — small sharks with mildly venomous spines — were once so common they may have been the most numerous sharks on Earth." },
+  { title:"Secret Green Glow", emoji:"🟢", text:"Under blue ocean light, swell sharks and chain catsharks glow bright green — a secret pattern only other sharks (and special cameras) can see." },
+  { title:"The Big Meal Trick", emoji:"🍱", text:"After a really big meal, a great white can go for weeks before needing to eat again." },
+  { title:"Half-Asleep Swimming", emoji:"😴", text:"Sharks never sleep like we do — they rest with eyes open, and some seem to let parts of their brain doze while they keep swimming." },
+  { title:"The Magnetic Map", emoji:"🧭", text:"Bonnethead sharks can read Earth's magnetic field like a map — scientists proved it by gently 'teleporting' their sense of place with magnets." },
+  { title:"Teeth on Their Eyes", emoji:"👁️", text:"Whale shark eyeballs are covered in hundreds of tiny tooth-like scales — eye armor! They can also pull their eyes deep into their heads." },
+  { title:"Shark Suntans", emoji:"🌞", text:"Hammerheads that cruise in sunny shallows actually get suntans — their skin darkens, and it doesn't seem to hurt them." },
+  { title:"The Free Taxi", emoji:"🚕", text:"Remora fish stick to sharks with a suction pad on their heads — they ride along for free and snack on scraps and parasites." },
+  { title:"The Pilot Crew", emoji:"✈️", text:"Little striped pilot fish swim right beside big sharks, cleaning up parasites — and the sharks almost never eat their tiny helpers." },
+  { title:"Shark Belly Buttons", emoji:"🔘", text:"Some sharks, like hammerheads and bull sharks, are born connected to mom just like humans — so they have belly-button scars between their fins!" },
+  { title:"Smelling in Stereo", emoji:"👃", text:"Sharks track smells in stereo: whichever nostril catches a scent first tells them exactly which way to turn." },
+  { title:"Freeze, Baby!", emoji:"🥶", text:"Baby bamboo sharks still inside their eggs can feel a predator's electric field — and they freeze completely still until it passes." },
+  { title:"Sharks on Mountains", emoji:"⛰️", text:"Fossil shark teeth turn up high on mountains — because those mountaintops were once ancient sea floors." },
+  { title:"The Mightiest Bite", emoji:"💪", text:"Megalodon's bite was likely the strongest of any animal ever — several times more powerful than T. rex's." },
+  { title:"Anne's Big Swim", emoji:"🌏", text:"A whale shark named Anne was tracked swimming over 20,000 km across the Pacific — one of the longest journeys ever recorded for a fish." },
+  { title:"The Deepest Diver", emoji:"⬇️", text:"Portuguese dogfish have been found about 3,700 m down — deeper than most submarines can go." },
+  { title:"Follow That Shark", emoji:"📡", text:"Scientists tag real sharks with trackers that ping a website whenever their fin breaks the surface — you can follow famous sharks online!" },
+  { title:"Shark Safe Zones", emoji:"🏝️", text:"In 2009, Palau turned ALL of its ocean into the world's first shark sanctuary — many countries have followed." },
+  { title:"Sideways Swimmer", emoji:"↔️", text:"Great hammerheads often swim rolled over on their side — scientists found it actually saves them energy!" },
+  { title:"Shark Best Friends", emoji:"👯", text:"Lemon sharks pick favorite companions and hang out with the same individuals again and again." },
+  { title:"Curly Egg Anchors", emoji:"🌿", text:"Many shark egg cases have curly tendrils at the corners that wrap around seaweed so waves can't wash the babies away." },
+  { title:"Lightsaber Spines", emoji:"⚔️", text:"The velvet belly lanternshark has glowing spines on its back — scientists compared them to tiny warning lightsabers." },
+  { title:"The Arctic Scavenger", emoji:"🐻‍❄️", text:"Greenland sharks are the ocean's clean-up crew — leftovers of reindeer and even polar bears have been found in their stomachs." },
+  { title:"Tree Rings for Sharks", emoji:"🌳", text:"Scientists tell a shark's age by counting growth rings inside its backbone — just like counting tree rings." },
+  { title:"NASA's Shark Job", emoji:"🛰️", text:"The computer trick used to match whale shark spot patterns was borrowed from software astronomers built to map stars!" },
+  { title:"Jumping Giants", emoji:"🦘", text:"Huge, slow-looking basking sharks can breach out of the water almost as fast as great whites — nobody expected that." },
+  { title:"The Sleepy Trance", emoji:"😵", text:"Gently rolled upside down, many sharks drift into a calm trance called tonic immobility — scientists use it for safe check-ups." },
+  { title:"Even Sharks Get Scared", emoji:"🙀", text:"When orcas show up, great whites leave the whole area — sometimes for months. Even the ocean's most famous hunter has a boss." },
+  { title:"Seven Gills", emoji:"7️⃣", text:"Most sharks have five gill slits — but ancient-style sixgill and sevengill sharks kept extras from their prehistoric ancestors." },
+  { title:"Nose Job", emoji:"👃", text:"A shark's nostrils are for smelling only — they breathe entirely through their gills." },
+  { title:"Atomic Birthday Math", emoji:"⚛️", text:"To check how old whale sharks get, scientists measured traces of old atom-bomb-test carbon in their vertebrae. Science detective work!" },
+  { title:"Dragon Tongue Teeth", emoji:"🐉", text:"In the Middle Ages, people found fossil megalodon teeth and believed they were petrified dragon tongues!" },
+  { title:"Rapids-Jumping Sharks", emoji:"🏞️", text:"Bull sharks reach Lake Nicaragua by leaping up river rapids — just like salmon." },
+];
+
+var BADGES = [
+  { id:"first", name:"First Dive", emoji:"🥇", desc:"Finish your first zone" },
+  { id:"untouch", name:"Untouchable", emoji:"🛡️", desc:"Clear a zone with zero jellyfish stings" },
+  { id:"combo", name:"Speedy Snacker", emoji:"⚡", desc:"Eat 3 snacks in a quick combo" },
+  { id:"facts3", name:"Fact Finder", emoji:"🔎", desc:"Collect 3 science orbs" },
+  { id:"factsAll", name:"Shark Scientist", emoji:"🧠", desc:"Collect 10 science orbs" },
+  { id:"half", name:"Halfway Deep", emoji:"🌊", desc:"Reach the ocean's halfway point" },
+  { id:"master", name:"Ocean Master", emoji:"🏆", desc:"Finish all 8 zones" },
+  { id:"perfect", name:"Perfect Run", emoji:"⭐", desc:"Finish the game without a single sting" },
+  { id:"twins", name:"Twin Finder", emoji:"💞", desc:"Meet Mochi & Boba, the magical seahorse sisters" },
+  { id:"treasure", name:"Treasure Hunter", emoji:"🗝️", desc:"Find Advaith & Ayush's secret treasure chest" },
+  { id:"turbo", name:"Turbo Shark", emoji:"🌀", desc:"Catch a golden tuna and go full speed" },
+  { id:"quiz", name:"Quiz Whiz", emoji:"🧩", desc:"Answer 5 shark quiz questions correctly" },
+  { id:"abyss5", name:"Abyss Diver", emoji:"🌌", desc:"Reach Level 5 in endless Abyss Mode" },
+];
+
+var QUIZ = [
+  { q:"Which shark can WALK on its fins?", opts:["Epaulette shark","Great white","Shortfin mako"], ans:0 },
+  { q:"Which is the fastest shark in the ocean?", opts:["Tiger shark","Shortfin mako","Nurse shark"], ans:1 },
+  { q:"What is the biggest fish in the ocean?", opts:["Great white","Blue whale","Whale shark"], ans:2 },
+  { q:"Which shark can live 270 years or more?", opts:["Greenland shark","Blacktip reef shark","Hammerhead"], ans:0 },
+  { q:"What are shark skeletons made of?", opts:["Bone","Cartilage","Shell"], ans:1 },
+  { q:"Which shark can swim far up rivers?", opts:["Bull shark","Goblin shark","Whale shark"], ans:0 },
+  { q:"What are baby sharks called?", opts:["Cubs","Kittens","Pups"], ans:2 },
+  { q:"Whose jaws shoot forward like a slingshot?", opts:["Goblin shark","Nurse shark","Mako"], ans:0 },
+  { q:"Which shark eats seagrass — a real omnivore?", opts:["Bonnethead","Great white","Frilled shark"], ans:0 },
+  { q:"What keeps a shark afloat instead of a swim bladder?", opts:["Air in its tummy","A big oily liver","Hollow bones"], ans:1 },
+  { q:"Which shark looks like a shaggy piece of reef?", opts:["Wobbegong","Blue shark","Lemon shark"], ans:0 },
+  { q:"How do sharks feel electricity?", opts:["Ampullae of Lorenzini","Whiskers","Their tail"], ans:0 },
+  { q:"Which came FIRST on Earth?", opts:["Trees","Dinosaurs","Sharks"], ans:2 },
+  { q:"Which shark puffs up like a balloon?", opts:["Swell shark","Tiger shark","Sawshark"], ans:0 },
+  { q:"Whale sharks mostly eat…", opts:["Seals","Tiny plankton","Big tuna"], ans:1 },
+  { q:"Baby tiger sharks are born with…", opts:["Spots","Stripes","Glowing fins"], ans:1 },
+  { q:"Which shark's tail is as long as its whole body?", opts:["Thresher shark","Bull shark","Horn shark"], ans:0 },
+  { q:"The smallest shark could fit…", opts:["In a bathtub","In your hands","In a car"], ans:1 },
+  { q:"What can sharks NOT do?", opts:["Swim backward","Hear sounds","Smell food"], ans:0 },
+  { q:"Hammerheads sweep their wide heads to find…", opts:["Stingrays under the sand","Seaweed","Treasure"], ans:0 },
+  { q:"Which deep-sea shark makes its own light?", opts:["Lanternshark","Nurse shark","Blacktip"], ans:0 },
+  { q:"Which shark was only discovered in 1976?", opts:["Megamouth","Great white","Tiger shark"], ans:0 },
+  { q:"What is a 'mermaid's purse'?", opts:["A shark egg case","A seashell","A jellyfish"], ans:0 },
+  { q:"What was the giant extinct shark called?", opts:["Gigantosaurus","Megalodon","Mosasaur"], ans:1 },
+];
+
+var SPOTLIGHT_SPECIES = ["Epaulette_shark","Tasselled_wobbegong","Angelshark","Zebra_shark","Leopard_shark","Horn_shark","Port_Jackson_shark","Bonnethead","Spinner_shark","Blue_shark","Salmon_shark","Porbeagle","Basking_shark","Megamouth_shark","Common_thresher","Sawshark","Cookiecutter_shark","Dwarf_lanternshark","Velvet_belly_lanternshark","Ninja_lanternshark","American_pocket_shark","Swell_shark","Chain_catshark","Puffadder_shyshark","Pyjama_shark","Broadnose_sevengill_shark","Bluntnose_sixgill_shark","Spiny_dogfish","Portuguese_dogfish","Pacific_sleeper_shark","Sand_tiger_shark","Silky_shark","Oceanic_whitetip_shark","Whitetip_reef_shark","Grey_reef_shark","Caribbean_reef_shark","Bull_shark","Lemon_shark","Sandbar_shark","Brownbanded_bamboo_shark","Wobbegong","Smooth_hammerhead","Scalloped_hammerhead","Winghead_shark","Crocodile_shark","Kitefin_shark","Blacktip_shark","Dusky_shark"];
+
+/* ---------- sound (hardened for mobile) ---------- */
+var Sound = (function(){
+  var ctx = null, master = null, muted = false, unlocked = false;
+  function ensure(){
+    if (!ctx) {
+      try {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        master = ctx.createGain();
+        master.gain.value = 1;
+        master.connect(ctx.destination);
+      } catch(e){ ctx = null; }
+    }
+    if (ctx && ctx.state === "suspended") { try { ctx.resume(); } catch(e){} }
+    return ctx;
+  }
+  function unlock(){
+    var c = ensure();
+    if (!c) return;
+    if (!unlocked) {
+      try {
+        // Play a tiny silent buffer inside the user gesture — this is the
+        // classic trick that fully unlocks audio on mobile browsers.
+        var buf = c.createBuffer(1, 1, 22050);
+        var src = c.createBufferSource();
+        src.buffer = buf;
+        src.connect(c.destination);
+        src.start(0);
+        unlocked = true;
+      } catch(e){}
+    }
+  }
+  function blip(f0,f1,dur,type,vol){
+    var c = ensure(); if (!c || muted) return;
+    try {
+      var o = c.createOscillator(), g = c.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(f0, c.currentTime);
+      o.frequency.exponentialRampToValueAtTime(f1, c.currentTime + dur);
+      g.gain.setValueAtTime(vol, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + dur);
+      o.connect(g); g.connect(master || c.destination);
+      o.start(); o.stop(c.currentTime + dur);
+    } catch(e){}
+  }
+  return {
+    unlock: unlock,
+    toggle: function(){ muted = !muted; return muted; },
+    isMuted: function(){ return muted; },
+    eat: function(){ blip(520,940,0.12,"square",0.16); },
+    sting: function(){ blip(220,70,0.3,"sawtooth",0.2); },
+    orb: function(){ blip(440,660,0.12,"sine",0.16); setTimeout(function(){ blip(660,990,0.16,"sine",0.16); },110); },
+    dive: function(){ blip(330,165,0.5,"sine",0.16); setTimeout(function(){ blip(392,196,0.5,"sine",0.12); },120); },
+    badge: function(){ blip(523,523,0.12,"triangle",0.16); setTimeout(function(){ blip(659,659,0.12,"triangle",0.16); },120); setTimeout(function(){ blip(784,1046,0.25,"triangle",0.18); },240); },
+    power: function(){ blip(220,880,0.35,"square",0.14); setTimeout(function(){ blip(440,1320,0.3,"square",0.12); },140); },
+  };
+})();
+["pointerdown","touchstart","touchend","mousedown","keydown","click"].forEach(function(ev){
+  document.addEventListener(ev, function(){ Sound.unlock(); }, { capture:true, passive:true });
+});
+
+/* ---------- shark drawing (shared by game + 360 viewer) ---------- */
+function bodyPath(ctx,L,h,spec){
+  var noseX = L*0.5;
+  ctx.beginPath();
+  ctx.moveTo(noseX, spec.head==="point" ? -h*0.1 : 0);
+  ctx.bezierCurveTo(L*0.28,-h*1.15,-L*0.15,-h*1.05,-L*0.5,-h*0.18);
+  ctx.lineTo(-L*0.5,h*0.18);
+  ctx.bezierCurveTo(-L*0.15,h,L*0.3,h*0.95,noseX, spec.head==="point" ? h*0.18 : h*0.25);
+  ctx.closePath();
+}
+function drawShark(ctx,x,y,vx,vy,t,spec,flash){
+  var dir = vx >= 0 ? 1 : -1;
+  var pitch = Math.max(-0.5, Math.min(0.5, Math.atan2(vy, Math.abs(vx)+40)));
+  ctx.save(); ctx.translate(x,y); ctx.scale(dir,1); ctx.rotate(pitch);
+  if (flash) ctx.globalAlpha = 0.45 + 0.3*Math.sin(t*25);
+  drawSharkBody(ctx, spec, t);
+  ctx.restore();
+}
+function drawSharkBody(ctx,spec,t){
+  var L = spec.len, h = L*(spec.head==="whale" ? 0.3 : (spec.slim || 0.26));
+  var wag = Math.sin(t*8)*0.16;
+
+  // tail
+  ctx.save(); ctx.translate(-L*0.48,0); ctx.rotate(wag);
+  ctx.fillStyle = spec.body;
+  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-L*0.24,-L*0.2); ctx.lineTo(-L*0.15,0); ctx.lineTo(-L*0.22,L*0.16); ctx.closePath(); ctx.fill();
+  if (spec.finTip){ ctx.fillStyle = spec.finTip; ctx.beginPath(); ctx.moveTo(-L*0.19,-L*0.155); ctx.lineTo(-L*0.24,-L*0.2); ctx.lineTo(-L*0.205,-L*0.09); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
+
+  // body
+  ctx.fillStyle = spec.body;
+  bodyPath(ctx,L,h,spec);
+  ctx.fill();
+
+  // belly
+  var noseX = L*0.5;
+  ctx.fillStyle = spec.belly;
+  ctx.beginPath();
+  ctx.moveTo(noseX*0.96,h*0.12);
+  ctx.bezierCurveTo(L*0.3,h*0.9,-L*0.1,h*0.85,-L*0.45,h*0.14);
+  ctx.bezierCurveTo(-L*0.1,h*0.45,L*0.25,h*0.42,noseX*0.96,h*0.12);
+  ctx.closePath(); ctx.fill();
+
+  // tiger stripes (young tiger sharks really have these)
+  if (spec.stripes){
+    ctx.save();
+    bodyPath(ctx,L,h,spec); ctx.clip();
+    ctx.fillStyle = "rgba(40,52,60,0.5)";
+    for (var i=0;i<6;i++){
+      var sx = -L*0.42 + i*L*0.13;
+      ctx.save(); ctx.translate(sx,-h*0.25); ctx.rotate(0.12);
+      ctx.fillRect(-L*0.022,-h*0.85,L*0.044,h*1.15);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+  // whale shark spots (unique like fingerprints)
+  if (spec.spots){
+    ctx.save();
+    bodyPath(ctx,L,h,spec); ctx.clip();
+    ctx.fillStyle = "rgba(217,237,247,0.85)";
+    for (var r=0;r<4;r++){
+      for (var c2=0;c2<9;c2++){
+        var px = -L*0.44 + c2*L*0.105 + (r%2)*L*0.05;
+        var py = -h*0.78 + r*h*0.34;
+        ctx.beginPath(); ctx.arc(px,py,L*0.014,0,Math.PI*2); ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  // heads
+  if (spec.head==="goblin"){
+    ctx.fillStyle = spec.body;
+    ctx.beginPath(); ctx.moveTo(L*0.42,-h*0.5); ctx.lineTo(L*0.74,-h*0.28); ctx.lineTo(L*0.44,-h*0.05); ctx.closePath(); ctx.fill();
+  }
+  if (spec.head==="hammer"){
+    // cephalofoil: flat forward extension with a tall end-bar; eye at its tip
+    ctx.fillStyle = spec.body;
+    ctx.beginPath();
+    ctx.moveTo(L*0.36,-h*0.5);
+    ctx.lineTo(L*0.62,-h*0.62);
+    ctx.quadraticCurveTo(L*0.7,-h*0.62,L*0.7,-h*0.4);
+    ctx.lineTo(L*0.7,h*0.05);
+    ctx.quadraticCurveTo(L*0.7,h*0.22,L*0.6,h*0.18);
+    ctx.lineTo(L*0.38,h*0.1);
+    ctx.closePath(); ctx.fill();
+  }
+  if (spec.head==="whale"){
+    // wide flat mouth line
+    ctx.strokeStyle = "rgba(10,20,30,0.55)";
+    ctx.lineWidth = Math.max(1.6,L*0.014);
+    ctx.beginPath(); ctx.moveTo(L*0.49,h*0.12); ctx.quadraticCurveTo(L*0.36,h*0.3,L*0.2,h*0.32); ctx.stroke();
+  }
+
+  // dorsal fin
+  ctx.fillStyle = spec.body;
+  ctx.beginPath();
+  ctx.moveTo(-L*0.02,-h*0.95);
+  ctx.quadraticCurveTo(L*0.02,-h*1.9,-L*0.16,-h*1.7);
+  ctx.lineTo(-L*0.22,-h*0.86); ctx.closePath(); ctx.fill();
+  if (spec.finTip){
+    ctx.fillStyle = spec.finTip;
+    ctx.beginPath(); ctx.moveTo(-L*0.045,-h*1.62);
+    ctx.quadraticCurveTo(-L*0.02,-h*1.9,-L*0.16,-h*1.7);
+    ctx.lineTo(-L*0.13,-h*1.45); ctx.closePath(); ctx.fill();
+  }
+
+  // pectoral fin
+  ctx.fillStyle = spec.body;
+  ctx.save(); ctx.translate(L*0.08,h*0.5); ctx.rotate(0.5+Math.sin(t*4)*0.05);
+  ctx.beginPath(); ctx.moveTo(0,0); ctx.quadraticCurveTo(-L*0.05,L*0.34,-L*0.3,L*0.34); ctx.lineTo(-L*0.18,0); ctx.closePath(); ctx.fill();
+  if (spec.finTip){ ctx.fillStyle = spec.finTip; ctx.beginPath(); ctx.moveTo(-L*0.14,L*0.26); ctx.quadraticCurveTo(-L*0.16,L*0.34,-L*0.3,L*0.34); ctx.lineTo(-L*0.22,L*0.2); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
+
+  // gills
+  ctx.strokeStyle = "rgba(0,0,0,0.22)";
+  ctx.lineWidth = Math.max(1.2, L*0.014);
+  for (var gI=0;gI<4;gI++){ ctx.beginPath(); ctx.arc(L*0.16-gI*L*0.045,0,h*0.42,-0.9,0.9); ctx.stroke(); }
+
+  // eye
+  var eyeX = spec.head==="hammer" ? L*0.66 : L*0.33;
+  var eyeY = spec.head==="hammer" ? -h*0.42 : -h*0.28;
+  ctx.fillStyle = "#0C1118";
+  ctx.beginPath(); ctx.arc(eyeX,eyeY,Math.max(2.4,L*0.032),0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = "#FFFFFF";
+  ctx.beginPath(); ctx.arc(eyeX+L*0.005,eyeY-L*0.008,Math.max(1,L*0.012),0,Math.PI*2); ctx.fill();
+
+  // mouth (skip for whale/hammer which have theirs)
+  if (spec.head!=="whale" && spec.head!=="hammer"){
+    ctx.strokeStyle = "rgba(0,0,0,0.4)";
+    ctx.lineWidth = Math.max(1.2, L*0.014);
+    ctx.beginPath(); ctx.arc(L*0.34,h*0.02,L*0.1,0.35,1.35); ctx.stroke();
+  }
+  if (spec.barbels){
+    ctx.strokeStyle = "rgba(30,25,15,0.6)";
+    ctx.lineWidth = Math.max(1.2, L*0.014);
+    ctx.beginPath(); ctx.moveTo(L*0.44,h*0.2); ctx.lineTo(L*0.46,h*0.34); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(L*0.48,h*0.18); ctx.lineTo(L*0.51,h*0.31); ctx.stroke();
+  }
+}
+
+/* ---------- 360 turntable viewer ---------- */
+function makeViewer2D(canvas){
+  var vctx = canvas.getContext("2d");
+  var theta = 0.6, vel = 0.5, dragging = false, lastX = 0, spec = null, raf = null;
+  var dpr2 = Math.min(2, window.devicePixelRatio || 1);
+  function fit(){
+    var w = canvas.clientWidth || 360, hh = Math.round(w*0.47);
+    canvas.width = w*dpr2; canvas.height = hh*dpr2;
+    canvas.style.height = hh + "px";
+  }
+  function down(e){ dragging = true; vel = 0; lastX = (e.touches?e.touches[0]:e).clientX; e.preventDefault(); }
+  function move(e){
+    if (!dragging) return;
+    var x = (e.touches?e.touches[0]:e).clientX;
+    var dx = x - lastX; lastX = x;
+    theta += dx*0.02; vel = dx*0.6;
+    e.preventDefault();
+  }
+  function up(){ dragging = false; }
+  canvas.addEventListener("pointerdown", down);
+  canvas.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+  canvas.addEventListener("touchstart", down, {passive:false});
+  canvas.addEventListener("touchmove", move, {passive:false});
+  window.addEventListener("touchend", up);
+  function frame(now){
+    if (!spec){ raf = null; return; }
+    var t = now/1000;
+    if (!dragging){
+      vel += (0.5 - vel)*0.02;      // ease back to gentle auto-spin
+      theta += vel*0.016;
+    }
+    var W2 = canvas.width/dpr2, H2 = canvas.height/dpr2;
+    vctx.setTransform(dpr2,0,0,dpr2,0,0);
+    vctx.clearRect(0,0,W2,H2);
+    var s = Math.cos(theta);
+    var sx = (s>=0?1:-1)*Math.max(0.14, Math.abs(s));
+    var scale = Math.min(W2/ (spec.len*1.7), H2/(spec.len*0.9)) * 1.05;
+    // ground shadow
+    vctx.fillStyle = "rgba(0,0,0,0.35)";
+    vctx.beginPath();
+    vctx.ellipse(W2/2, H2*0.86, spec.len*scale*0.55*Math.abs(sx)+14, 8, 0, 0, Math.PI*2);
+    vctx.fill();
+    vctx.save();
+    vctx.translate(W2/2, H2*0.48 + Math.sin(t*1.6)*4);
+    vctx.scale(sx*scale, scale);
+    drawSharkBody(vctx, spec, t*0.6);
+    vctx.restore();
+    // edge-on shading — sells the "turning away from you" moment
+    var dark = (1-Math.abs(s))*0.45;
+    if (dark > 0.02){
+      vctx.fillStyle = "rgba(3,16,30," + dark.toFixed(2) + ")";
+      vctx.fillRect(0,0,W2,H2);
+    }
+    raf = requestAnimationFrame(frame);
+  }
+  return {
+    start: function(sp){ spec = sp; fit(); if (!raf) raf = requestAnimationFrame(frame); },
+    stop: function(){ spec = null; },
+  };
+}
+
+
+/* ---------- real 3D shark models (Three.js, falls back to 2D) ---------- */
+function makeViewer(canvas){
+  if (window.THREE && !window.__NO3D){
+    try { return makeViewer3D(canvas); } catch(e){}
+  }
+  return makeViewer2D(canvas);
+}
+function hex2rgb(hx){ hx = hx.replace("#",""); return [parseInt(hx.substr(0,2),16),parseInt(hx.substr(2,2),16),parseInt(hx.substr(4,2),16)]; }
+function blendCol(c1,c2,t2){
+  var a = hex2rgb(c1), b = hex2rgb(c2);
+  return "rgb("+Math.round(a[0]+(b[0]-a[0])*t2)+","+Math.round(a[1]+(b[1]-a[1])*t2)+","+Math.round(a[2]+(b[2]-a[2])*t2)+")";
+}
+function sharkTexture(spec){
+  var c = document.createElement("canvas"); c.width = 256; c.height = 128;
+  var x = c.getContext("2d");
+  // countershading: top rows (v near 0/127) = back color, middle rows = belly
+  for (var v=0; v<128; v++){
+    var ang = v/128*Math.PI*2;
+    var topness = (Math.cos(ang)+1)/2;
+    topness = Math.min(1, Math.max(0, (topness-0.32)/0.36));
+    x.fillStyle = blendCol(spec.belly, spec.body, topness);
+    x.fillRect(0,v,256,1);
+  }
+  // gill slits on both flanks
+  x.strokeStyle = "rgba(0,0,0,0.32)"; x.lineWidth = 2;
+  for (var gI=0; gI<4; gI++){
+    var gx = 46+gI*7;
+    x.beginPath(); x.moveTo(gx,14); x.lineTo(gx,50); x.stroke();
+    x.beginPath(); x.moveTo(gx,78); x.lineTo(gx,114); x.stroke();
+  }
+  if (spec.stripes){
+    x.fillStyle = "rgba(30,40,48,0.45)";
+    for (var s2=0; s2<7; s2++){
+      var sx = 86+s2*20;
+      x.fillRect(sx,0,6,40); x.fillRect(sx,88,6,40);
+    }
+  }
+  if (spec.spots){
+    x.fillStyle = "rgba(217,237,247,0.9)";
+    for (var r2=0; r2<3; r2++) for (var c2=0; c2<10; c2++){
+      var px = 40+c2*20+(r2%2)*10;
+      x.beginPath(); x.arc(px, 10+r2*12, 3, 0, Math.PI*2); x.fill();
+      x.beginPath(); x.arc(px, 118-r2*12, 3, 0, Math.PI*2); x.fill();
+    }
+  }
+  // mouth hint near the nose seam
+  x.strokeStyle = "rgba(0,0,0,0.45)"; x.lineWidth = 3;
+  x.beginPath(); x.moveTo(8,60); x.quadraticCurveTo(22,70,36,64); x.stroke();
+  return c;
+}
+function buildShark3D(spec){
+  var g3 = new THREE.Group();
+  var L = 2;
+  var isWhale = spec.head==="whale";
+  var maxH = isWhale ? 0.30 : (spec.slim ? 0.13 : 0.24);
+  var maxW = isWhale ? 0.26 : (spec.slim ? 0.09 : 0.16);
+  var segsL = 30, segsR = 20;
+  var noseT = spec.head==="point" ? 0.06 : 0.17;
+  var peak = 0.34;
+  function prof(u){
+    if (u < peak){ var k = u/peak; return noseT + (1-noseT)*(k*k*(3-2*k)); }
+    var k2 = (u-peak)/(1-peak); var e = k2*k2*(3-2*k2);
+    return 1 - e*0.94;
+  }
+  var pos=[], uv=[], idx=[];
+  for (var i=0;i<=segsL;i++){
+    var u = i/segsL, pp = prof(u);
+    var x3 = L/2 - u*L;
+    for (var j=0;j<=segsR;j++){
+      var a = j/segsR*Math.PI*2;
+      pos.push(x3, Math.cos(a)*maxH*pp, Math.sin(a)*maxW*pp);
+      uv.push(u, j/segsR);
+    }
+  }
+  for (i=0;i<segsL;i++) for (j=0;j<segsR;j++){
+    var a1 = i*(segsR+1)+j, b1 = a1+segsR+1;
+    idx.push(a1,b1,a1+1, b1,b1+1,a1+1);
+  }
+  var geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos,3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv,2));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  var tex = new THREE.CanvasTexture(sharkTexture(spec));
+  var bodyMat = new THREE.MeshStandardMaterial({ map:tex, roughness:0.62, metalness:0.06 });
+  g3.add(new THREE.Mesh(geo, bodyMat));
+
+  var finMat = new THREE.MeshStandardMaterial({ color:new THREE.Color(spec.body), roughness:0.7, side:THREE.DoubleSide });
+  var tipMat = spec.finTip ? new THREE.MeshStandardMaterial({ color:new THREE.Color(spec.finTip), roughness:0.7, side:THREE.DoubleSide }) : null;
+  function finMesh(pts, mat){
+    var s = new THREE.Shape();
+    s.moveTo(pts[0][0], pts[0][1]);
+    for (var k=1;k<pts.length;k++) s.lineTo(pts[k][0], pts[k][1]);
+    var gg = new THREE.ExtrudeGeometry(s, { depth:0.03, bevelEnabled:false });
+    return new THREE.Mesh(gg, mat);
+  }
+  var dorsal = finMesh([[0.16,0],[0.05,0.34],[-0.12,0.30],[-0.22,0]], finMat);
+  dorsal.position.set(-0.02, maxH*0.82, -0.015);
+  g3.add(dorsal);
+  if (tipMat){
+    var dt = finMesh([[0.0,0.24],[-0.05,0.34],[-0.12,0.30],[-0.1,0.2]], tipMat);
+    dt.position.set(-0.02+0.05, maxH*0.82, -0.016);
+    g3.add(dt);
+  }
+  var tail = finMesh([[0.02,0],[-0.28,0.32],[-0.15,0.02],[-0.23,-0.2],[-0.04,-0.03]], finMat);
+  tail.position.set(-L/2+0.06, 0, -0.015);
+  g3.add(tail);
+  var pL = finMesh([[0,0],[-0.1,-0.28],[-0.32,-0.32],[-0.18,-0.02]], finMat);
+  pL.position.set(L*0.12, -maxH*0.3, maxW*0.55);
+  pL.rotation.x = -0.65;
+  g3.add(pL);
+  var pR = pL.clone();
+  pR.position.z = -maxW*0.55;
+  pR.rotation.x = 0.65;
+  g3.add(pR);
+
+  var eyeMat = new THREE.MeshStandardMaterial({ color:0x0c1118, roughness:0.3 });
+  function eye(px,py,pz){
+    var e = new THREE.Mesh(new THREE.SphereGeometry(0.035,10,10), eyeMat);
+    e.position.set(px,py,pz);
+    g3.add(e);
+  }
+  if (spec.head==="hammer"){
+    var ham = new THREE.Mesh(new THREE.CylinderGeometry(0.095,0.095,0.74,16), finMat);
+    ham.rotation.x = Math.PI/2;
+    ham.scale.set(1.6,1,0.5);
+    ham.position.set(L*0.42, maxH*0.12, 0);
+    g3.add(ham);
+    eye(L*0.42, maxH*0.12, 0.38);
+    eye(L*0.42, maxH*0.12, -0.38);
+  } else {
+    eye(L*0.33, maxH*0.34, maxW*0.72);
+    eye(L*0.33, maxH*0.34, -maxW*0.72);
+  }
+  if (spec.head==="goblin"){
+    var sn = new THREE.Mesh(new THREE.ConeGeometry(0.07,0.42,10), finMat);
+    sn.rotation.z = -Math.PI/2;
+    sn.position.set(L*0.55, maxH*0.38, 0);
+    g3.add(sn);
+  }
+  if (spec.barbels){
+    var bMat = new THREE.MeshStandardMaterial({ color:0x2a2216, roughness:0.8 });
+    [-0.05,0.05].forEach(function(z){
+      var w = new THREE.Mesh(new THREE.CylinderGeometry(0.008,0.004,0.1,6), bMat);
+      w.position.set(L*0.46, -maxH*0.42, z);
+      g3.add(w);
+    });
+  }
+  return g3;
+}
+function makeViewer3D(canvas){
+  var renderer = new THREE.WebGLRenderer({ canvas:canvas, alpha:true, antialias:true });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(38, 2, 0.1, 50);
+  camera.position.set(0, 0.32, 3.15);
+  camera.lookAt(0,0,0);
+  scene.add(new THREE.HemisphereLight(0xbfefff, 0x07293d, 0.95));
+  var dl = new THREE.DirectionalLight(0xffffff, 0.85);
+  dl.position.set(2,3,2.5); scene.add(dl);
+  var dl2 = new THREE.DirectionalLight(0x35e0c8, 0.3);
+  dl2.position.set(-2,-1,-2); scene.add(dl2);
+  var model=null, raf=null, rotY=0.7, rotX=0.1, vel=0.35, dragging=false, lx=0, ly=0;
+  function fit(){
+    var w = canvas.clientWidth || 360, h2 = Math.round(w*0.47);
+    renderer.setSize(w, h2, false);
+    canvas.style.height = h2+"px";
+    camera.aspect = w/h2;
+    camera.updateProjectionMatrix();
+  }
+  function down(e){ dragging=true; vel=0; var p=e.touches?e.touches[0]:e; lx=p.clientX; ly=p.clientY; e.preventDefault(); }
+  function move(e){
+    if (!dragging) return;
+    var p = e.touches?e.touches[0]:e;
+    rotY += (p.clientX-lx)*0.012;
+    rotX += (p.clientY-ly)*0.008;
+    rotX = Math.max(-0.6, Math.min(0.6, rotX));
+    vel = (p.clientX-lx)*0.35;
+    lx = p.clientX; ly = p.clientY;
+    e.preventDefault();
+  }
+  function up(){ dragging=false; }
+  canvas.addEventListener("pointerdown",down);
+  canvas.addEventListener("pointermove",move);
+  window.addEventListener("pointerup",up);
+  canvas.addEventListener("touchstart",down,{passive:false});
+  canvas.addEventListener("touchmove",move,{passive:false});
+  window.addEventListener("touchend",up);
+  function frame(now){
+    if (!model){ raf=null; return; }
+    var t = now/1000;
+    if (!dragging){ vel += (0.35-vel)*0.02; rotY += vel*0.016; }
+    model.rotation.order = "YXZ";
+    model.rotation.y = rotY;
+    model.rotation.x = rotX;
+    model.position.y = Math.sin(t*1.6)*0.05;
+    renderer.render(scene, camera);
+    raf = requestAnimationFrame(frame);
+  }
+  return {
+    start: function(spec){
+      fit();
+      if (model) scene.remove(model);
+      model = buildShark3D(spec);
+      scene.add(model);
+      if (!raf) raf = requestAnimationFrame(frame);
+    },
+    stop: function(){ if (model){ scene.remove(model); model = null; } },
+  };
+}
+
+/* ---------- DOM / game state ---------- */
+function $(id){ return document.getElementById(id); }
+var cv = $("cv"), wrap = $("wrap"), ctx = cv.getContext("2d");
+var W = 600, H = 480, dpr = Math.min(2, window.devicePixelRatio || 1);
+
+var g = {
+  mode:"title", zone:0, meter:0, hearts:3, score:0,
+  shark:{x:300,y:260,vx:0,vy:0}, target:{x:300,y:260},
+  fish:[], jellies:[], orbs:[], particles:[], bubbles:[], snow:[], floaties:[],
+  lastFish:0, lastJelly:0, lastOrb:0, invulnUntil:0, stungFlash:0,
+  bonusPool:[], unlockedBonus:[], cardZone:0, toastTimer:null,
+  stars:[], stingsThisZone:0, totalStings:0,
+  combo:0, lastEat:0, badges:[], compareFrom:"title",
+  surprises:[], twinsSeen:0, chestsSeen:0, lastSurprise:0,
+  tunas:[], lastTuna:0, turboUntil:0, turboToastShown:false,
+  quizPool:[], quizRight:0, pendingCard:null, shieldUntil:0,
+  abyss:false, abyssLevel:0, bestAbyss:0,
+};
+
+function resize(){
+  var r = wrap.getBoundingClientRect();
+  W = r.width; H = r.height;
+  cv.width = W*dpr; cv.height = H*dpr;
+  cv.style.width = W+"px"; cv.style.height = H+"px";
+}
+resize();
+window.addEventListener("resize", resize);
+if (window.ResizeObserver) new ResizeObserver(resize).observe(wrap);
+
+for (var bi=0;bi<26;bi++) g.bubbles.push({x:Math.random()*W,y:Math.random()*H,r:1+Math.random()*3.4,s:12+Math.random()*24,seed:Math.random()*9});
+for (var si=0;si<60;si++) g.snow.push({x:Math.random()*W,y:Math.random()*H,r:0.6+Math.random()*1.6,s:5+Math.random()*12,seed:Math.random()*9});
+g.shark.x = W*0.4; g.shark.y = H*0.5;
+g.target = {x:W*0.4,y:H*0.5};
+
+function onMove(e){
+  var r = cv.getBoundingClientRect();
+  var p = e.touches ? e.touches[0] : e;
+  g.target.x = p.clientX - r.left;
+  g.target.y = p.clientY - r.top;
+}
+cv.addEventListener("pointermove", onMove);
+cv.addEventListener("pointerdown", onMove);
+cv.addEventListener("touchmove", onMove, {passive:true});
+document.addEventListener("touchmove", function(e){ if (e.target === cv) e.preventDefault(); }, {passive:false});
+
+var cardViewer = makeViewer($("viewer"));
+var endViewer = makeViewer($("endViewer"));
+
+/* real shark photos, fetched live from Wikipedia (CC-licensed thumbnails) */
+var PHOTO_TITLES = {
+  blacktip:"Blacktip_reef_shark", nurse:"Nurse_shark", hammer:"Great_hammerhead",
+  tiger:"Tiger_shark", whale:"Whale_shark", mako:"Shortfin_mako_shark",
+  greatwhite:"Great_white_shark", goblin:"Goblin_shark", frilled:"Frilled_shark",
+  greenland:"Greenland_shark",
+};
+var photoCache = {};
+function fetchPhotoUrl(id, cb){
+  if (photoCache[id] !== undefined) return cb(photoCache[id]);
+  var done = function(u){ photoCache[id] = u; cb(u); };
+  fetch("https://en.wikipedia.org/api/rest_v1/page/summary/" + PHOTO_TITLES[id])
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var u = (d.thumbnail && d.thumbnail.source) || (d.originalimage && d.originalimage.source) || null;
+      if (u) done(u); else throw new Error("no image");
+    })
+    .catch(function(){
+      // fallback: MediaWiki action API with CORS enabled via origin=*
+      fetch("https://en.wikipedia.org/w/api.php?action=query&format=json&prop=pageimages&pithumbsize=640&origin=*&titles=" + PHOTO_TITLES[id])
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          var pages = d.query && d.query.pages, u = null;
+          for (var k in pages){ if (pages[k].thumbnail) u = pages[k].thumbnail.source; }
+          done(u);
+        })
+        .catch(function(){ done(null); });
+    });
+}
+var spotPool = [];
+function showSpotlight(){
+  if (spotPool.length===0) spotPool = SPOTLIGHT_SPECIES.slice();
+  var title = spotPool.splice(Math.floor(Math.random()*spotPool.length),1)[0];
+  var fallback = function(){
+    var f = BONUS_FACTS[Math.floor(Math.random()*BONUS_FACTS.length)];
+    showToast(f.emoji + " Shark Science: " + f.title, f.text, false);
+  };
+  fetch("https://en.wikipedia.org/api/rest_v1/page/summary/" + title)
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var name = (d.title || title.replace(/_/g," "));
+      var txt = (d.extract || "").split(". ").slice(0,2).join(". ");
+      if (!txt){ fallback(); return; }
+      if (txt.charAt(txt.length-1) !== ".") txt += ".";
+      if (txt.length > 260) txt = txt.slice(0,257) + "…";
+      showToast("🔭 Species Spotlight: " + name, txt + " (via Wikipedia)", false);
+    })
+    .catch(fallback);
+}
+var currentCardSpec = null;
+function setCardTab(mode){
+  var is3d = mode==="3d";
+  document.getElementById("tab3d").classList.toggle("active", is3d);
+  document.getElementById("tabPhoto").classList.toggle("active", !is3d);
+  $("viewer").classList.toggle("hidden", !is3d);
+  show("photoBox", !is3d);
+  $("spinHintTxt").textContent = is3d ? "↺ drag the shark to spin it around" : "📸 a real one, photographed in the wild";
+  if (is3d){ if (currentCardSpec) cardViewer.start(currentCardSpec); }
+  else {
+    cardViewer.stop();
+    var spec = currentCardSpec;
+    var img = $("photoImg"), cap = $("photoCap");
+    img.style.display = "none";
+    cap.textContent = "Loading real photo…";
+    fetchPhotoUrl(spec.id, function(url){
+      if (currentCardSpec !== spec) return;
+      if (!url){ cap.textContent = "Photos can't load here — open the game in Chrome (outside the preview) to see real shark photos!"; return; }
+      img.onload = function(){ img.style.display = "block"; cap.textContent = "A real " + spec.sharkName + " · photo via Wikipedia"; };
+      img.onerror = function(){ cap.textContent = "Photo could not load right now."; };
+      img.src = url;
+    });
+  }
+}
+document.getElementById("tab3d").addEventListener("click", function(){ Sound.unlock(); setCardTab("3d"); });
+document.getElementById("tabPhoto").addEventListener("click", function(){ Sound.unlock(); setCardTab("photo"); });
+
+/* ---------- UI ---------- */
+function show(id,on){ $(id).classList.toggle("hidden",!on); }
+function setScreen(name){
+  g.mode = name;
+  show("titleScr", name==="title");
+  show("cardScr", name==="card");
+  show("restScr", name==="rest");
+  show("quizScr", name==="quiz");
+  show("endScr", name==="end");
+  show("compareScr", name==="compare");
+  var hud = name==="play" || name==="rest";
+  show("hud",hud); show("meterBox",hud);
+  show("badgePill", hud && g.badges.length>0);
+  if (name!=="card") cardViewer.stop();
+  if (name!=="end") endViewer.stop();
+}
+function updateHUD(){
+  var z = ZONES[g.zone];
+  if (g.abyss){
+    $("zoneNum").textContent = "Abyss Lv " + (g.abyssLevel+1);
+    $("zoneName").textContent = z.sharkName;
+    $("depth").textContent = (2400 + g.abyssLevel*150 + Math.round(150*g.meter/FISH_PER_ZONE)) + " m";
+  } else {
+    $("zoneNum").textContent = "Zone " + (g.zone+1) + "/" + ZONES.length;
+    $("zoneName").textContent = z.zoneName;
+    $("depth").textContent = Math.round(z.depthBase + z.depthSpan*g.meter/FISH_PER_ZONE) + " m";
+  }
+  $("fill").style.width = (g.meter/FISH_PER_ZONE*100)+"%";
+  var foodWord = z.food==="plankton" ? "plankton" : "fish";
+  $("meterLabel").textContent = (z.food==="plankton"?"🌿 ":"🐟 ") + g.meter + "/" + FISH_PER_ZONE + " " + foodWord + " · eat to dive deeper · dodge the jellyfish!";
+  var hs = $("hearts").children;
+  for (var i=0;i<3;i++) hs[i].textContent = i < g.hearts ? "❤️" : "🖤";
+  $("badgePill").textContent = "🏅 " + g.badges.length;
+}
+function starStr(n){ return "⭐".repeat(n) + "☆".repeat(3-n); }
+function showCard(zi, starsEarned){
+  g.cardZone = zi;
+  var c = ZONES[zi];
+  $("cardEyebrow").textContent = zi===0 ? "Your first shark" : "Zone " + (zi+1) + " unlocked · you transform!";
+  if (starsEarned != null){
+    $("cardStars").textContent = "You earned " + starStr(starsEarned) + " in " + ZONES[zi-1].zoneName + "!";
+    show("cardStars", true);
+  } else show("cardStars", false);
+  $("cardName").textContent = c.sharkName;
+  $("cardNick").textContent = "\u201C" + c.nickname + "\u201D";
+  $("cardSize").textContent = c.size;
+  $("cardPower").textContent = c.superpower;
+  $("cardFact").textContent = c.fact;
+  $("cardBtn").textContent = zi===0 ? "Start Swimming" : "Keep Diving ↓";
+  setScreen("card");
+  currentCardSpec = c;
+  setCardTab("3d");
+}
+function showToast(title, text, isBadge){
+  $("toastTitle").textContent = title;
+  $("toastText").textContent = text;
+  $("toast").classList.toggle("badge", !!isBadge);
+  show("toast", true);
+  clearTimeout(g.toastTimer);
+  g.toastTimer = setTimeout(function(){ show("toast",false); }, 6000);
+}
+function awardBadge(id){
+  if (g.badges.indexOf(id) !== -1) return;
+  g.badges.push(id);
+  var b = BADGES.find(function(x){ return x.id===id; });
+  Sound.badge();
+  showToast(b.emoji + " Badge earned: " + b.name, b.desc, true);
+  updateHUD();
+}
+function floaty(x,y,txt,color){
+  g.floaties.push({x:x,y:y,txt:txt,life:1,color:color||"#FFFFFF"});
+}
+
+/* ---------- compare lab ---------- */
+var CMP = {
+  size: {
+    note: "Real average maximum lengths. The whale shark ties a school bus — and megalodon (extinct) was even longer!",
+    rows: [
+      {name:"You (age 7-ish)", val:1.2, label:"1.2 m", ref:true, icon:"🧒"},
+      {name:"Blacktip Reef Shark", val:1.6, label:"1.6 m", icon:"🦈"},
+      {name:"Frilled Shark", val:2, label:"2 m", icon:"🐍"},
+      {name:"Nurse Shark", val:3, label:"3 m", icon:"😴"},
+      {name:"Goblin Shark", val:3.5, label:"3.5 m", icon:"🦈"},
+      {name:"Shortfin Mako", val:4, label:"4 m", icon:"🦈"},
+      {name:"Great Hammerhead", val:4.5, label:"4.5 m", icon:"🔨"},
+      {name:"Tiger Shark", val:4.5, label:"4.5 m", icon:"🐯"},
+      {name:"Great White", val:6, label:"6 m", icon:"🦈"},
+      {name:"Greenland Shark", val:6, label:"6 m", icon:"🦈"},
+      {name:"School Bus", val:12, label:"12 m", ref:true, icon:"🚌"},
+      {name:"Whale Shark", val:12, label:"12 m", icon:"🐋"},
+    ],
+  },
+  speed: {
+    note: "Top burst speeds scientists have estimated. The mako out-sprints everything — the Greenland shark barely moves, and that slow, cold life is part of why it lives so long.",
+    rows: [
+      {name:"Greenland Shark", val:1, label:"~1 km/h", icon:"🐌"},
+      {name:"Whale Shark", val:5, label:"~5 km/h", icon:"🐋"},
+      {name:"Olympic Swimmer", val:8, label:"~8 km/h", ref:true, icon:"🏊"},
+      {name:"Tiger Shark", val:30, label:"~30 km/h", icon:"🐯"},
+      {name:"Great White", val:40, label:"~40 km/h", icon:"🦈"},
+      {name:"Shortfin Mako", val:70, label:"~70 km/h", icon:"🚀"},
+    ],
+  },
+  life: {
+    note: "Scientists dated Greenland shark eye proteins to find their age — at least 270 years, maybe 400+. A shark alive today might have hatched before cars, planes, or lightbulbs existed.",
+    rows: [
+      {name:"Most Sharks", val:25, label:"20–30 yrs", icon:"🦈"},
+      {name:"Great White", val:70, label:"~70 yrs", icon:"🦈"},
+      {name:"Human", val:80, label:"~80 yrs", ref:true, icon:"🧑"},
+      {name:"Whale Shark", val:100, label:"~100 yrs", icon:"🐋"},
+      {name:"Greenland Shark", val:400, label:"270–400+ yrs", icon:"👑"},
+    ],
+  },
+};
+function renderCompare(mode){
+  var data = CMP[mode];
+  var max = 0;
+  data.rows.forEach(function(r){ if (r.val>max) max = r.val; });
+  var body = $("cmpBody"); body.innerHTML = "";
+  data.rows.forEach(function(r){
+    var row = document.createElement("div"); row.className = "cmpRow";
+    var top = document.createElement("div"); top.className = "cmpTop";
+    top.innerHTML = "<span>" + r.icon + " " + r.name + "</span><span class='val'>" + r.label + "</span>";
+    var track = document.createElement("div"); track.className = "cmpBarTrack";
+    var bar = document.createElement("div"); bar.className = "cmpBar" + (r.ref ? " ref" : "");
+    bar.style.width = "0%";
+    track.appendChild(bar);
+    row.appendChild(top); row.appendChild(track); body.appendChild(row);
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){ bar.style.width = (r.val/max*100) + "%"; }); });
+  });
+  $("cmpNote").textContent = data.note;
+  var tabs = document.querySelectorAll("#compareScr .tab");
+  tabs.forEach(function(tb){ tb.classList.toggle("active", tb.dataset.mode===mode); });
+}
+document.querySelectorAll("#compareScr .tab").forEach(function(tb){
+  tb.addEventListener("click", function(){ renderCompare(tb.dataset.mode); });
+});
+function openCompare(from){
+  g.compareFrom = from;
+  setScreen("compare");
+  renderCompare("size");
+}
+$("compareBtn").addEventListener("click", function(){ openCompare("title"); });
+$("endCompareBtn").addEventListener("click", function(){ openCompare("end"); });
+$("compareBack").addEventListener("click", function(){
+  if (g.compareFrom==="end"){ setScreen("end"); endViewer.start(ZONES[ZONES.length-1]); }
+  else setScreen("title");
+});
+
+/* ---------- end screen ---------- */
+function buildEnd(){
+  $("endSummary").innerHTML = "You swam as all " + ZONES.length + " sharks, ate <b>" + g.score +
+    " snacks</b>, earned <b>" + g.badges.length + "/" + BADGES.length + " badges</b>, and discovered <b>" +
+    g.unlockedBonus.length + "</b> of the ocean's <b>" + BONUS_FACTS.length + "</b> hidden shark facts!" +
+    (g.bestAbyss>0 ? " Best Abyss run: <b>Level " + g.bestAbyss + "</b> 🌌" : "");
+  var sg = $("starGrid"); sg.innerHTML = "";
+  ZONES.forEach(function(z,i){
+    var d = document.createElement("div"); d.className = "mini";
+    d.innerHTML = "<b style='font-size:10.5px'>" + z.zoneName + "</b><p style='font-size:13px'>" + starStr(g.stars[i]||0) + "</p>";
+    sg.appendChild(d);
+  });
+  var bg = $("badgeGrid"); bg.innerHTML = "";
+  BADGES.forEach(function(b){
+    var got = g.badges.indexOf(b.id) !== -1;
+    var d = document.createElement("div"); d.className = "mini" + (got ? " gold" : " locked");
+    d.innerHTML = "<b>" + b.emoji + " " + b.name + "</b><p>" + b.desc + "</p>";
+    bg.appendChild(d);
+  });
+  var fg = $("factGrid"); fg.innerHTML = "";
+  if (g.unlockedBonus.length===0){
+    var dEmpty = document.createElement("div"); dEmpty.className = "mini locked";
+    dEmpty.innerHTML = "<b>🔎 No orbs caught yet</b><p>Catch glowing ? orbs next dive — there are " + BONUS_FACTS.length + " facts hiding in the ocean!</p>";
+    fg.appendChild(dEmpty);
+  }
+  g.unlockedBonus.forEach(function(i){
+    var f = BONUS_FACTS[i];
+    var d = document.createElement("div"); d.className = "mini";
+    d.innerHTML = "<b>" + f.emoji + " " + f.title + "</b><p>" + f.text + "</p>";
+    fg.appendChild(d);
+  });
+  var pg = $("photoGrid"); pg.innerHTML = "";
+  ZONES.forEach(function(z){
+    var d = document.createElement("div"); d.className = "mini"; d.style.padding = "0";
+    d.innerHTML = "<div style=\"height:74px;background:#04141F;display:flex;align-items:center;justify-content:center;color:#5E8C84;font-size:10px\">loading…</div>" +
+      "<b style=\"display:block;padding:5px 8px 7px;font-size:11px\">" + z.sharkName + "</b>";
+    pg.appendChild(d);
+    fetchPhotoUrl(z.id, function(url){
+      var slot = d.firstChild;
+      if (!url){ slot.textContent = "needs internet"; return; }
+      slot.innerHTML = "<img src=\"" + url + "\" alt=\"" + z.sharkName + "\" style=\"width:100%;height:74px;object-fit:cover;display:block\" />";
+    });
+  });
+}
+
+/* ---------- flow ---------- */
+function showQuiz(nextZone, starsEarned){
+  if (g.quizPool.length===0) g.quizPool = QUIZ.map(function(_,i){ return i; });
+  var qi = g.quizPool.splice(Math.floor(Math.random()*g.quizPool.length),1)[0];
+  var Q = QUIZ[qi];
+  g.pendingCard = { zone: nextZone, stars: starsEarned };
+  $("quizQ").textContent = Q.q;
+  var box = $("quizOpts"); box.innerHTML = "";
+  show("quizFeedback", false); show("quizNext", false);
+  Q.opts.forEach(function(opt, oi){
+    var btn = document.createElement("button");
+    btn.className = "tab";
+    btn.style.cssText = "font-size:15px;padding:11px 14px;text-align:left";
+    btn.textContent = opt;
+    btn.addEventListener("click", function(){
+      if ($("quizNext").classList.contains("hidden")===false) return; // already answered
+      var right = oi===Q.ans;
+      box.querySelectorAll(".tab").forEach(function(x,xi){
+        x.style.opacity = xi===Q.ans ? "1" : "0.45";
+        if (xi===Q.ans) x.classList.add("active");
+      });
+      var fb = $("quizFeedback");
+      if (right){
+        Sound.badge();
+        g.quizRight += 1; g.score += 3;
+        fb.innerHTML = "🎉 <b>Correct!</b> +3 bonus snacks!";
+        if (g.quizRight>=5) awardBadge("quiz");
+      } else {
+        Sound.sting();
+        fb.innerHTML = "Good try! The answer is <b>" + Q.opts[Q.ans] + "</b>. Now you know!";
+      }
+      show("quizFeedback", true); show("quizNext", true);
+      updateHUD();
+    });
+    box.appendChild(btn);
+  });
+  setScreen("quiz");
+}
+$("quizNext").addEventListener("click", function(){
+  Sound.unlock();
+  var pc = g.pendingCard; g.pendingCard = null;
+  if (pc) showCard(pc.zone, pc.stars);
+});
+function goFullscreen(){
+  var el = document.documentElement;
+  try {
+    if (el.requestFullscreen) el.requestFullscreen();
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  } catch(e){}
+}
+var wakeLock = null;
+function keepAwake(){
+  try { if ("wakeLock" in navigator) navigator.wakeLock.request("screen").then(function(wl){ wakeLock = wl; }); } catch(e){}
+}
+document.addEventListener("visibilitychange", function(){ if (document.visibilityState==="visible") keepAwake(); });
+
+function startGame(){
+  Sound.unlock(); goFullscreen(); keepAwake();
+  g.zone = 0; g.meter = 0; g.hearts = 3; g.score = 0;
+  g.bonusPool = BONUS_FACTS.map(function(_,i){ return i; });
+  g.unlockedBonus = []; g.badges = []; g.stars = [];
+  g.stingsThisZone = 0; g.totalStings = 0; g.combo = 0;
+  g.fish = []; g.jellies = []; g.orbs = []; g.floaties = [];
+  g.surprises = []; g.twinsSeen = 0; g.chestsSeen = 0; g.lastSurprise = performance.now();
+  g.tunas = []; g.lastTuna = performance.now(); g.turboUntil = 0; g.turboToastShown = false;
+  g.quizPool = QUIZ.map(function(_,i){ return i; }); g.quizRight = 0; g.pendingCard = null; g.shieldUntil = 0;
+  g.abyss = false; g.abyssLevel = 0;
+  updateHUD();
+  showCard(0, null);
+}
+$("startBtn").addEventListener("click", startGame);
+$("againBtn").addEventListener("click", startGame);
+$("abyssBtn").addEventListener("click", function(){
+  Sound.unlock(); Sound.dive(); goFullscreen(); keepAwake();
+  g.abyss = true; g.abyssLevel = 0;
+  g.zone = Math.floor(Math.random()*ZONES.length);
+  g.meter = 0; g.hearts = 3; g.stingsThisZone = 0;
+  g.fish = []; g.jellies = []; g.orbs = []; g.tunas = []; g.surprises = [];
+  updateHUD();
+  showToast("🌌 Abyss Mode!","Endless diving — a new random shark every level, and more jellyfish the deeper you go. How far can you get?",false);
+  setScreen("play");
+});
+document.querySelectorAll(".lenBtn").forEach(function(lb){
+  lb.addEventListener("click", function(){
+    Sound.unlock();
+    FISH_PER_ZONE = parseInt(lb.dataset.len, 10);
+    document.querySelectorAll(".lenBtn").forEach(function(x){ x.classList.toggle("active", x===lb); });
+  });
+});
+$("cardBtn").addEventListener("click", function(){
+  Sound.unlock(); Sound.dive();
+  if (g.cardZone !== g.zone) g.zone = g.cardZone;
+  g.stingsThisZone = 0;
+  updateHUD();
+  setScreen("play");
+});
+$("restBtn").addEventListener("click", function(){
+  Sound.unlock();
+  g.hearts = 3; updateHUD();
+  g.invulnUntil = performance.now()+2000;
+  setScreen("play");
+});
+$("restExitBtn").addEventListener("click", function(){
+  Sound.unlock();
+  g.abyss = false;
+  buildEnd(); setScreen("end");
+  endViewer.start(ZONES[ZONES.length-1]);
+});
+$("mute").addEventListener("click", function(){
+  Sound.unlock();
+  $("mute").textContent = Sound.toggle() ? "🔇" : "🔊";
+});
+
+/* ---------- spawning ---------- */
+function spawnFood(zone){
+  if (zone.food==="plankton"){
+    g.fish.push({
+      type:"plankton",
+      x: Math.random()<0.5 ? -34 : W+34,
+      y: 50 + Math.random()*(H-140),
+      vx: (Math.random()<0.5?1:-1)*(14+Math.random()*20),
+      r: 15,
+      color: zone.fishColors[Math.floor(Math.random()*zone.fishColors.length)],
+      seed: Math.random()*9,
+    });
+    if (g.fish[g.fish.length-1].x < 0) g.fish[g.fish.length-1].vx = Math.abs(g.fish[g.fish.length-1].vx);
+    else g.fish[g.fish.length-1].vx = -Math.abs(g.fish[g.fish.length-1].vx);
+    return;
+  }
+  var fromLeft = Math.random()<0.5;
+  g.fish.push({
+    type:"fish",
+    x: fromLeft ? -30 : W+30,
+    y: 40 + Math.random()*(H-120),
+    vx: (fromLeft?1:-1)*(40+Math.random()*60),
+    r: 8+Math.random()*5,
+    color: zone.fishColors[Math.floor(Math.random()*zone.fishColors.length)],
+    seed: Math.random()*9,
+  });
+}
+function spawnJelly(){ g.jellies.push({x:40+Math.random()*(W-80),y:H+40,r:16+Math.random()*10,s:14+Math.random()*14,seed:Math.random()*9}); }
+function spawnOrb(){ g.orbs.push({x:60+Math.random()*(W-120),y:-30,r:13,s:20,seed:Math.random()*9,kind:(Math.random()<0.3?"spot":"fact")}); }
+function burst(x,y,color){
+  for (var i=0;i<10;i++){
+    var a = Math.random()*Math.PI*2, sp = 40+Math.random()*90;
+    g.particles.push({x:x,y:y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:0.6,color:color});
+  }
+}
+function drawPlankton(ctx,f,t){
+  ctx.save(); ctx.translate(f.x,f.y);
+  ctx.shadowColor = f.color; ctx.shadowBlur = 16;
+  for (var i=0;i<6;i++){
+    var a = (i/6)*Math.PI*2 + t*0.8 + f.seed;
+    var rr = f.r*0.55 + Math.sin(t*2+i)*3;
+    ctx.fillStyle = f.color;
+    ctx.globalAlpha = 0.75;
+    ctx.beginPath(); ctx.arc(Math.cos(a)*rr, Math.sin(a)*rr, 3.4, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha = 0.5;
+  ctx.beginPath(); ctx.arc(0,0,4,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+/* ---------- main loop ---------- */
+var last = performance.now();
+function loop(now){
+  var dt = Math.min(0.033,(now-last)/1000); last = now;
+  var t = now/1000;
+  var zone = ZONES[g.zone];
+  var playing = g.mode==="play";
+  var deepZone = g.zone >= 7;
+  var sh = g.shark;
+
+  if (g.mode==="title"){
+    g.target.x = W*0.5 + Math.sin(t*0.6)*W*0.28;
+    g.target.y = H*0.42 + Math.sin(t*1.1)*40;
+  }
+  var turbo = now < g.turboUntil;
+  var ease = turbo ? 6.2 : 3.2;
+  sh.vx += (g.target.x-sh.x)*ease*dt;
+  sh.vy += (g.target.y-sh.y)*ease*dt;
+  var damp = turbo ? 0.935 : 0.92;
+  sh.vx *= damp; sh.vy *= damp;
+  sh.x += sh.vx*dt*4; sh.y += sh.vy*dt*4;
+  sh.x = Math.max(30,Math.min(W-30,sh.x));
+  sh.y = Math.max(30,Math.min(H-30,sh.y));
+
+  if (playing){
+    var foodGap = zone.food==="plankton" ? 1000 : 800;
+    if (now-g.lastFish > foodGap && g.fish.length < 7){ spawnFood(zone); g.lastFish = now; }
+    var jellyCap = g.abyss ? Math.min(6, 2+Math.floor(g.abyssLevel/2)) : [1,1,2,2,2,2,3,3,3,3][g.zone];
+    if (now-g.lastJelly > 3600 && g.jellies.length < jellyCap){ spawnJelly(); g.lastJelly = now; }
+    if (now-g.lastOrb > 6500 && g.orbs.length < 1 && Math.random() < 0.75){ spawnOrb(); g.lastOrb = now; }
+    if (now-g.lastTuna > 16000 && g.tunas.length===0 && !turbo && Math.random() < 0.55){
+      var fromL = Math.random() < 0.5;
+      g.tunas.push({ x: fromL ? -40 : W+40, y: 60+Math.random()*(H-160),
+        vx: (fromL?1:-1)*(120+Math.random()*50), r: 11, seed: Math.random()*9 });
+      g.lastTuna = now;
+    }
+    // surprise cameos — rare, at most a couple of each per game
+    if (now-g.lastSurprise > 14000 && g.surprises.length===0 && Math.random() < 0.5){
+      if (g.twinsSeen <= g.chestsSeen && g.twinsSeen < 2){
+        g.surprises.push({type:"twins", x:-70, y:70+Math.random()*(H-190), vx:36, seed:Math.random()*9});
+        g.twinsSeen += 1;
+      } else if (g.chestsSeen < 2){
+        g.surprises.push({type:"chest", x:80+Math.random()*(W-160), y:H+40, vy:-15, seed:Math.random()*9});
+        g.chestsSeen += 1;
+      }
+      g.lastSurprise = now;
+    }
+  }
+
+  g.fish.forEach(function(f){ f.x += f.vx*dt; f.y += Math.sin(t*2.4+f.seed)*18*dt; });
+  g.fish = g.fish.filter(function(f){ return f.x > -70 && f.x < W+70 && !f.eaten; });
+  g.jellies.forEach(function(j){ j.y -= j.s*dt; });
+  g.jellies = g.jellies.filter(function(j){ return j.y > -80 && !j.gone; });
+  g.orbs.forEach(function(o){ o.y += o.s*dt; });
+  g.orbs = g.orbs.filter(function(o){ return o.y < H+40 && !o.gone; });
+  g.surprises.forEach(function(sp){
+    if (sp.type==="twins"){
+      if (sp.leaving){ sp.y -= 70*dt; sp.x += 30*dt; }
+      else { sp.x += sp.vx*dt; sp.y += Math.sin(t*1.8+sp.seed)*14*dt; }
+    }
+    else { sp.y += sp.vy*dt; }
+  });
+  g.surprises = g.surprises.filter(function(sp){ return sp.x < W+100 && sp.y > -70 && !sp.gone; });
+  g.tunas.forEach(function(tn){ tn.x += tn.vx*dt; tn.y += Math.sin(t*5+tn.seed)*40*dt; });
+  g.tunas = g.tunas.filter(function(tn){ return tn.x > -80 && tn.x < W+80 && !tn.eaten; });
+  g.particles.forEach(function(p){ p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 30*dt; p.life -= dt; });
+  g.particles = g.particles.filter(function(p){ return p.life > 0; });
+  g.floaties.forEach(function(f){ f.y -= 34*dt; f.life -= dt*0.7; });
+  g.floaties = g.floaties.filter(function(f){ return f.life > 0; });
+  g.bubbles.forEach(function(b){ b.y -= b.s*dt; b.x += Math.sin(t+b.seed)*8*dt; if (b.y<-10){ b.y=H+10; b.x=Math.random()*W; } });
+  g.snow.forEach(function(s){ s.y += s.s*dt; s.x += Math.sin(t*0.7+s.seed)*5*dt; if (s.y>H+6){ s.y=-6; s.x=Math.random()*W; } });
+
+  if (playing){
+    var eatR = zone.len*0.36;
+    g.fish.forEach(function(f){
+      if (Math.hypot(f.x-sh.x,f.y-sh.y) < eatR+f.r){
+        f.eaten = true; burst(f.x,f.y,f.color); Sound.eat();
+        // combo streak
+        if (now - g.lastEat < 1700){ g.combo += 1; } else { g.combo = 1; }
+        g.lastEat = now;
+        if (g.combo >= 2) floaty(f.x, f.y-14, "x" + g.combo + "!", "#FFD166");
+        if (g.combo >= 3) awardBadge("combo");
+        g.meter += 1; g.score += 1; updateHUD();
+        if (g.meter >= FISH_PER_ZONE){
+          var earned = g.stingsThisZone===0 ? 3 : (g.stingsThisZone===1 ? 2 : 1);
+          g.stars[g.zone] = earned;
+          if (g.stingsThisZone===0) awardBadge("untouch");
+          if (g.zone===0) awardBadge("first");
+          if (g.zone===4) awardBadge("half");
+          g.meter = 0; g.fish = []; g.jellies = []; g.orbs = [];
+          if (g.abyss){
+            g.abyssLevel += 1;
+            if (g.abyssLevel > g.bestAbyss) g.bestAbyss = g.abyssLevel;
+            if (g.abyssLevel >= 5) awardBadge("abyss5");
+            g.zone = Math.floor(Math.random()*ZONES.length);
+            Sound.dive();
+            floaty(sh.x, sh.y-50, "ABYSS LV " + g.abyssLevel + "!", "#B69CFF");
+            updateHUD();
+          } else if (g.zone < ZONES.length-1){
+            Sound.dive();
+            showQuiz(g.zone+1, earned);
+          } else {
+            awardBadge("master");
+            if (g.totalStings===0) awardBadge("perfect");
+            buildEnd(); setScreen("end");
+            endViewer.start(ZONES[ZONES.length-1]);
+          }
+        }
+      }
+    });
+    g.orbs.forEach(function(o){
+      if (Math.hypot(o.x-sh.x,o.y-sh.y) < eatR+o.r){
+        o.gone = true; burst(o.x,o.y, o.kind==="spot" ? "#B69CFF" : "#35E0C8"); Sound.orb();
+        if (o.kind==="spot"){ showSpotlight(); return; }
+        if (g.bonusPool.length===0) g.bonusPool = BONUS_FACTS.map(function(_,i2){ return i2; }); // reshuffle: facts never run out
+        var pick = g.bonusPool.splice(Math.floor(Math.random()*g.bonusPool.length),1)[0];
+        if (g.unlockedBonus.indexOf(pick)===-1) g.unlockedBonus.push(pick);
+        var f = BONUS_FACTS[pick];
+        showToast(f.emoji + " Shark Science: " + f.title, f.text, false);
+        if (g.unlockedBonus.length>=3) awardBadge("facts3");
+        if (g.unlockedBonus.length>=10) awardBadge("factsAll");
+      }
+    });
+    g.tunas.forEach(function(tn){
+      if (Math.hypot(tn.x-sh.x,tn.y-sh.y) < eatR+tn.r+6){
+        tn.eaten = true;
+        burst(tn.x,tn.y,"#FFD166"); burst(tn.x,tn.y,"#FFF3C9");
+        Sound.power();
+        g.turboUntil = now + 8000;
+        floaty(sh.x, sh.y-46, "TURBO!", "#FFD166");
+        awardBadge("turbo");
+        if (!g.turboToastShown){
+          g.turboToastShown = true;
+          showToast("⚡ Golden Tuna Power!","Oily fish like tuna are super-fuel for sharks — makos chase them at rocket speed. 8 seconds of turbo, and jellyfish can't sting you!",false);
+        }
+      }
+    });
+    g.surprises.forEach(function(sp){
+      if (Math.hypot(sp.x-sh.x,sp.y-sh.y) < eatR+34){
+        if (sp.type!=="twins") sp.gone = true;
+        if (sp.type==="twins"){
+          if (sp.blessed) return;
+          sp.blessed = true; sp.leaving = true;
+          burst(sp.x,sp.y,"#FF9EC4"); burst(sp.x,sp.y,"#7BE0AD");
+          Sound.badge();
+          g.hearts = Math.min(3,g.hearts+1);
+          g.shieldUntil = now + 20000;
+          floaty(sp.x,sp.y-28,"+❤️ Twin Shield!","#FF9EC4");
+          showToast("🌟 Twin Power!","Seahorse sisters Mochi (Atisha) & Boba (Sofia) cast a bubble shield around you — the next jellyfish can't sting! They wave and swim away. 👋",false);
+          awardBadge("twins");
+        } else {
+          burst(sp.x,sp.y,"#FFD166"); burst(sp.x,sp.y,"#FFE9A8");
+          Sound.orb();
+          g.score += 5;
+          g.meter = Math.min(FISH_PER_ZONE-1, g.meter+1);
+          floaty(sp.x,sp.y-24,"+5!","#FFD166");
+          showToast("💎 Secret Treasure!","Advaith & Ayush's hidden chest — +5 snacks and a boost deeper!",false);
+          awardBadge("treasure");
+        }
+        updateHUD();
+      }
+    });
+    if (turbo){
+      g.jellies.forEach(function(j){
+        var jx = j.x + Math.sin(t*1.4+j.seed)*12;
+        if (Math.hypot(jx-sh.x,j.y-sh.y) < eatR*0.9+j.r){
+          j.gone = true;
+          burst(jx,j.y,"#FF9EC4");
+          Sound.eat();
+          floaty(jx,j.y-16,"Bonk!","#FFD166");
+        }
+      });
+    } else if (now < g.shieldUntil){
+      g.jellies.forEach(function(j){
+        var jx = j.x + Math.sin(t*1.4+j.seed)*12;
+        if (Math.hypot(jx-sh.x,j.y-sh.y) < eatR*0.85+j.r){
+          j.gone = true;
+          g.shieldUntil = 0;
+          burst(jx,j.y,"#FF9EC4");
+          Sound.eat();
+          floaty(jx,j.y-16,"🛡️ Twin Shield!","#FF9EC4");
+        }
+      });
+    } else if (now > g.invulnUntil){
+      g.jellies.forEach(function(j){
+        var jx = j.x + Math.sin(t*1.4+j.seed)*12;
+        if (Math.hypot(jx-sh.x,j.y-sh.y) < eatR*0.8+j.r){
+          j.gone = true; g.invulnUntil = now+1600; g.stungFlash = now+350;
+          Sound.sting();
+          g.hearts -= 1; g.stingsThisZone += 1; g.totalStings += 1; g.combo = 0;
+          updateHUD();
+          if (g.hearts <= 0){
+            $("restExitBtn").classList.toggle("hidden", !g.abyss);
+            var rf = BONUS_FACTS[Math.floor(Math.random()*BONUS_FACTS.length)];
+            $("restFact").innerHTML = "<b style=\"color:#7BE0AD\">" + rf.emoji + " While you rest — did you know?</b><br/>" + rf.text;
+            setScreen("rest");
+          }
+        }
+      });
+    }
+  }
+
+  /* draw */
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  var grad = ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,zone.sky[0]);
+  grad.addColorStop(0.7,zone.sky[1]);
+  grad.addColorStop(1,zone.deep);
+  ctx.fillStyle = grad; ctx.fillRect(0,0,W,H);
+
+  if (g.zone <= 4){
+    ctx.save(); ctx.globalAlpha = 0.1; ctx.fillStyle = "#FFFFFF";
+    for (var ri=0;ri<4;ri++){
+      var rx = ((ri*0.27+0.08)%1)*W + Math.sin(t*0.3+ri)*30;
+      ctx.beginPath(); ctx.moveTo(rx,-20); ctx.lineTo(rx+70,-20); ctx.lineTo(rx+190,H); ctx.lineTo(rx+60,H); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+  if (g.zone===0){
+    ctx.fillStyle = "rgba(6,60,80,0.55)";
+    for (var ci=0;ci<6;ci++){
+      var cx = (ci/6)*W+30;
+      ctx.beginPath(); ctx.arc(cx,H+24,34+(ci%3)*14,Math.PI,0); ctx.fill();
+      ctx.fillRect(cx-3,H-40-(ci%2)*16,6,60);
+    }
+  }
+  if (g.zone===1 || g.zone===2){
+    // sandy ripples
+    ctx.strokeStyle = "rgba(240,225,180,0.18)"; ctx.lineWidth = 3;
+    for (var wi=0;wi<5;wi++){
+      ctx.beginPath();
+      ctx.moveTo(0,H-14-wi*10);
+      for (var xx=0;xx<=W;xx+=40) ctx.lineTo(xx, H-14-wi*10 + Math.sin(xx*0.05+wi)*3);
+      ctx.stroke();
+    }
+  }
+  if (g.zone >= 7){
+    g.snow.forEach(function(s){
+      ctx.globalAlpha = 0.25+0.25*Math.sin(t+s.seed);
+      ctx.fillStyle = "rgba(255,255,255,0.5)";
+      ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+    if (g.zone===ZONES.length-1){
+      for (var li=0;li<8;li++){
+        var bx = ((li*0.131+t*0.008)%1)*W, by = ((li*0.37)%1)*H;
+        ctx.fillStyle = li%2 ? "rgba(89,245,208,0.5)" : "rgba(127,208,255,0.4)";
+        ctx.shadowColor = "#59F5D0"; ctx.shadowBlur = 8;
+        ctx.beginPath(); ctx.arc(bx,by+Math.sin(t+li)*10,1.6+(li%3),0,Math.PI*2); ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = 1;
+  g.bubbles.forEach(function(b){ ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.stroke(); });
+
+  g.fish.forEach(function(f){
+    if (f.type==="plankton") drawPlankton(ctx,f,t);
+    else drawFish(ctx,f,t,deepZone);
+  });
+  g.orbs.forEach(function(o){ drawOrb(ctx,o,t); });
+  g.tunas.forEach(function(tn){ drawTuna(ctx,tn,t); });
+  g.surprises.forEach(function(sp){ if (sp.type==="twins") drawTwins(ctx,sp,t); else drawChest(ctx,sp,t); });
+  g.jellies.forEach(function(j){ drawJelly(ctx,j,t,deepZone); });
+
+  if (g.mode==="title" || g.mode==="play" || g.mode==="rest"){
+    if (turbo){
+      // golden aura + speed streaks
+      ctx.save();
+      ctx.globalAlpha = 0.28 + 0.1*Math.sin(t*14);
+      ctx.shadowColor = "#FFD166"; ctx.shadowBlur = 34;
+      ctx.fillStyle = "#FFD166";
+      ctx.beginPath(); ctx.ellipse(sh.x, sh.y, zone.len*0.6, zone.len*0.36, 0, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+      var bdir = sh.vx>=0 ? -1 : 1;
+      ctx.strokeStyle = "rgba(255,233,168,0.55)"; ctx.lineWidth = 2.5;
+      for (var st2=0; st2<3; st2++){
+        var sy2 = sh.y + (st2-1)*14;
+        ctx.beginPath();
+        ctx.moveTo(sh.x + bdir*zone.len*0.5, sy2);
+        ctx.lineTo(sh.x + bdir*(zone.len*0.5 + 26 + ((t*260+st2*30)%34)), sy2);
+        ctx.stroke();
+      }
+    }
+    if (now < g.shieldUntil){
+      ctx.save();
+      ctx.globalAlpha = 0.5 + 0.2*Math.sin(t*6);
+      ctx.strokeStyle = "#FF9EC4"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(sh.x, sh.y, zone.len*0.58 + Math.sin(t*4)*3, 0, Math.PI*2); ctx.stroke();
+      ctx.globalAlpha = 0.1;
+      ctx.fillStyle = "#FF9EC4";
+      ctx.beginPath(); ctx.arc(sh.x, sh.y, zone.len*0.58, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+    drawShark(ctx,sh.x,sh.y,sh.vx,sh.vy,t,zone,now < g.invulnUntil && !turbo);
+    if (turbo){
+      var frac = (g.turboUntil - now)/8000;
+      ctx.strokeStyle = "#FFD166"; ctx.lineWidth = 4; ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.arc(sh.x, sh.y, zone.len*0.62, -Math.PI/2, -Math.PI/2 + frac*Math.PI*2);
+      ctx.stroke();
+    }
+  }
+
+  g.particles.forEach(function(p){
+    ctx.globalAlpha = Math.max(0,p.life/0.6);
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2); ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+  g.floaties.forEach(function(f){
+    ctx.globalAlpha = Math.max(0,f.life);
+    ctx.fillStyle = f.color;
+    ctx.font = "800 20px 'Baloo 2', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(f.txt, f.x, f.y);
+  });
+  ctx.globalAlpha = 1;
+
+  if (now < g.stungFlash){ ctx.fillStyle = "rgba(255,90,90,0.18)"; ctx.fillRect(0,0,W,H); }
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function drawFish(ctx,f,t,glow){
+  ctx.save(); ctx.translate(f.x,f.y); ctx.scale(f.vx>=0?1:-1,1);
+  ctx.rotate(Math.sin(t*10+f.seed)*0.15);
+  if (glow){ ctx.shadowColor = f.color; ctx.shadowBlur = 14; }
+  ctx.fillStyle = f.color;
+  ctx.beginPath(); ctx.ellipse(0,0,f.r*1.5,f.r,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-f.r*1.3,0); ctx.lineTo(-f.r*2.3,-f.r*0.9); ctx.lineTo(-f.r*2.3,f.r*0.9); ctx.closePath(); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "#101820";
+  ctx.beginPath(); ctx.arc(f.r*0.8,-f.r*0.2,Math.max(1.4,f.r*0.22),0,Math.PI*2); ctx.fill();
+  if (glow){
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    for (var i=0;i<3;i++){ ctx.beginPath(); ctx.arc(-f.r+i*f.r*0.7,f.r*0.55,1.3,0,Math.PI*2); ctx.fill(); }
+  }
+  ctx.restore();
+}
+function drawJelly(ctx,j,t,deep){
+  ctx.save(); ctx.translate(j.x+Math.sin(t*1.4+j.seed)*12, j.y);
+  ctx.scale(1+Math.sin(t*3+j.seed)*0.08,1);
+  if (deep){ ctx.shadowColor = "#FF7EB9"; ctx.shadowBlur = 18; }
+  ctx.fillStyle = deep ? "rgba(255,126,185,0.75)" : "rgba(255,150,190,0.6)";
+  ctx.beginPath(); ctx.arc(0,0,j.r,Math.PI,0);
+  ctx.quadraticCurveTo(j.r,j.r*0.45,j.r*0.7,j.r*0.4);
+  ctx.quadraticCurveTo(0,j.r*0.72,-j.r*0.7,j.r*0.4);
+  ctx.quadraticCurveTo(-j.r,j.r*0.45,-j.r,0); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = deep ? "rgba(255,126,185,0.7)" : "rgba(255,150,190,0.5)";
+  ctx.lineWidth = 1.6;
+  for (var i=-2;i<=2;i++){
+    ctx.beginPath(); ctx.moveTo(i*j.r*0.32,j.r*0.4);
+    ctx.quadraticCurveTo(i*j.r*0.32+Math.sin(t*2.5+i+j.seed)*6,j.r*1.2,i*j.r*0.32+Math.sin(t*2+i)*10,j.r*2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawOrb(ctx,o,t){
+  var spot = o.kind==="spot";
+  ctx.save(); ctx.translate(o.x,o.y+Math.sin(t*2+o.seed)*6);
+  var p = 1+Math.sin(t*4+o.seed)*0.12;
+  ctx.shadowColor = spot ? "#B69CFF" : "#35E0C8"; ctx.shadowBlur = 22;
+  ctx.fillStyle = spot ? "rgba(182,156,255,0.92)" : "rgba(53,224,200,0.9)";
+  ctx.beginPath(); ctx.arc(0,0,o.r*p,0,Math.PI*2); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  if (spot){
+    ctx.font = (o.r*1.15) + "px sans-serif";
+    ctx.fillText("🔭",0,1);
+  } else {
+    ctx.fillStyle = "#04283A";
+    ctx.font = "800 " + (o.r*1.2) + "px 'Baloo 2', sans-serif";
+    ctx.fillText("?",0,1);
+  }
+  ctx.restore();
+}
+function drawTuna(ctx,tn,t){
+  ctx.save(); ctx.translate(tn.x,tn.y); ctx.scale(tn.vx>=0?1:-1,1);
+  ctx.rotate(Math.sin(t*14+tn.seed)*0.12);
+  ctx.shadowColor = "#FFD166"; ctx.shadowBlur = 22;
+  ctx.fillStyle = "#FFD166";
+  ctx.beginPath(); ctx.ellipse(0,0,tn.r*1.7,tn.r,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-tn.r*1.5,0); ctx.lineTo(-tn.r*2.6,-tn.r); ctx.lineTo(-tn.r*2.6,tn.r); ctx.closePath(); ctx.fill();
+  // tuna finlets along the back
+  ctx.fillStyle = "#FFB94A";
+  for (var i=0;i<3;i++){
+    ctx.beginPath();
+    ctx.moveTo(-tn.r*0.2-i*tn.r*0.45,-tn.r*0.9);
+    ctx.lineTo(-tn.r*0.35-i*tn.r*0.45,-tn.r*1.35);
+    ctx.lineTo(-tn.r*0.5-i*tn.r*0.45,-tn.r*0.9);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "#7A4A00";
+  ctx.beginPath(); ctx.arc(tn.r*0.9,-tn.r*0.2,2.2,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha = 0.6+0.4*Math.sin(t*10+tn.seed);
+  ctx.font = "13px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("✨", tn.r*1.6, -tn.r*1.3);
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+function drawSeahorse(ctx,t,seed,color,pearls){
+  var bob = Math.sin(t*3+seed)*2;
+  ctx.save(); ctx.translate(0,bob);
+  // fluttering back fin
+  ctx.fillStyle = "rgba(255,255,255,0.55)";
+  ctx.beginPath();
+  ctx.moveTo(-4,-4);
+  ctx.quadraticCurveTo(-13+Math.sin(t*12+seed)*3,0,-4,7);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(0,-11,6.5,0,Math.PI*2); ctx.fill();          // head
+  ctx.beginPath(); ctx.ellipse(1,0,5.5,9,0.15,0,Math.PI*2); ctx.fill(); // belly
+  ctx.fillRect(4,-14,9,4);                                               // snout
+  ctx.beginPath(); ctx.moveTo(-3,-16); ctx.lineTo(0,-21); ctx.lineTo(3,-16); ctx.closePath(); ctx.fill(); // coronet
+  ctx.strokeStyle = color; ctx.lineCap = "round";
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(-1,11,4.5,-0.6,Math.PI*1.2); ctx.stroke();   // tail curl
+  ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(-1,11,1.8,Math.PI*0.9,Math.PI*2.2); ctx.stroke();
+  ctx.fillStyle = "#12262E";
+  ctx.beginPath(); ctx.arc(2,-12,1.6,0,Math.PI*2); ctx.fill();          // eye
+  if (pearls){                                                           // boba pearls!
+    ctx.fillStyle = "rgba(70,45,25,0.85)";
+    for (var i=0;i<4;i++){ ctx.beginPath(); ctx.arc(-1+(i%2)*3.2,-2+i*3.2,1.2,0,Math.PI*2); ctx.fill(); }
+  }
+  ctx.restore();
+}
+function drawTwins(ctx,sp,t){
+  ctx.save(); ctx.translate(sp.x,sp.y);
+  ctx.font = "15px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText(sp.leaving ? "👋" : "💕", 0, -34 + Math.sin(t*3)*3);
+  if (sp.leaving){
+    ctx.globalAlpha = 0.7;
+    ctx.fillText("✨", -16, 22 + Math.sin(t*8)*4);
+    ctx.fillText("✨", 16, 26 + Math.cos(t*7)*4);
+    ctx.globalAlpha = 1;
+  }
+  // sparkly aura
+  ctx.save();
+  ctx.globalAlpha = 0.18 + 0.08*Math.sin(t*5);
+  ctx.shadowColor = "#FF9EC4"; ctx.shadowBlur = 24;
+  ctx.fillStyle = "#FF9EC4";
+  ctx.beginPath(); ctx.ellipse(0,0,42,30,0,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+  ctx.save(); ctx.translate(-17, 6+Math.sin(t*2.2)*3); drawSeahorse(ctx,t,1.3,"#FF9EC4",false); ctx.restore(); // Mochi (pink)
+  ctx.save(); ctx.translate(17, -4+Math.sin(t*2.2+1)*3); drawSeahorse(ctx,t,4.1,"#D9B38C",true); ctx.restore(); // Boba (milk-tea + pearls)
+  ctx.restore();
+}
+function drawChest(ctx,sp,t){
+  ctx.save(); ctx.translate(sp.x, sp.y+Math.sin(t*2+sp.seed)*4);
+  ctx.shadowColor = "#FFD166"; ctx.shadowBlur = 18;
+  ctx.fillStyle = "#8A5A2B";
+  ctx.fillRect(-16,-8,32,18);
+  ctx.fillStyle = "#A6712F";
+  ctx.beginPath(); ctx.moveTo(-16,-8); ctx.quadraticCurveTo(0,-24,16,-8); ctx.closePath(); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "#FFD166";
+  ctx.fillRect(-3,-8,6,18);
+  ctx.fillRect(-16,-9,32,3);
+  ctx.beginPath(); ctx.arc(0,3,3,0,Math.PI*2); ctx.fill();
+  ctx.font = "12px sans-serif"; ctx.textAlign = "center";
+  ctx.globalAlpha = 0.5+0.5*Math.sin(t*5);
+  ctx.fillText("✨", 22, -14);
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+</script>
+</body>
+</html>

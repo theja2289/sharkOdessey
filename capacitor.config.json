@@ -1,0 +1,8 @@
+{
+  "appId": "com.sharkodyssey.game",
+  "appName": "Shark Odyssey",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#03101F"
+  }
+}

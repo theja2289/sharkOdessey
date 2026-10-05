@@ -10,7 +10,7 @@ An educational, single-file HTML5 canvas shark game. It began as a gift for my n
 
 ## Architecture
 - The whole game lives in one `index.html` (CSS, HTML and JS inline). Keep it that way. The web version has **no build step**.
-- PWA files: `manifest.json`, `sw.js` (offline cache: network-first for pages, cache for three.js and fonts, Wikipedia never cached), `privacy.html`, `icon-192.png`, `icon-512.png`, `feature-graphic.png` (1024×500, for Play).
+- PWA files: `manifest.json`, `sw.js` (offline cache: network-first for pages, cache for three.js and fonts, Wikipedia never cached), `privacy.html`, `icon-192.png`, `icon-512.png`. Play Store graphics, screenshots and listing text live in `store-listing/`.
 - 3D: Three.js r128 parametric models with drag-to-orbit, and a 2D canvas fallback.
 - Wikipedia: real photo tabs and live blurbs. Uses the REST summary endpoint, falling back to the MediaWiki action API (`origin=*` for CORS). Don't reintroduce the thumbnail-upscale trick; it 404s on small originals.
 - Mobile audio: unlocked by playing a silent buffer inside the first user gesture. Keep this.
@@ -25,9 +25,10 @@ An educational, single-file HTML5 canvas shark game. It began as a gift for my n
 
 ## Android / Play Store
 - Capacitor 8 (`android/`, app ID `com.sharkodyssey.game`, target API 36). I chose it over a TWA because the app must ship the store edition, not the Pages site with the names, and so it works offline.
-- Run `npm run sync`: it builds `www/` (store edition, with three.js bundled from npm instead of the CDN) and copies it into `android/`.
+- Run `npm run sync`: it builds `www/` (store edition, with three.js and the Baloo 2 / Nunito fonts bundled from npm instead of the CDNs) and copies it into `android/`.
 - `.github/workflows/android.yml` builds a signed `.aab` and a debug `.apk` on every push to `main`. The signing keystore comes from repo secrets and is never committed.
-- `ANDROID.md` has the full keystore and Play Console walkthrough: content rating, data safety ("no data collected"), Families policy, and the 12-tester / 14-day closed test for new accounts.
+- `scripts/create-upload-key.sh` creates the upload key in a Codespace and prints the 4 secrets.
+- `ANDROID.md` is a beginner, browser-only, step-by-step publishing guide: content rating, data safety ("no data collected"), Families policy, and the 12-tester / 14-day closed test for new accounts.
 
 ## Game content
 - Campaign: 10 sharks across zones. Configurable "Dive Length", star ratings per zone, combo floaties.

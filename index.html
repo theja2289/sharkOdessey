@@ -19,7 +19,7 @@
   body{font-family:'Nunito',system-ui,sans-serif;background:#03101F;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;touch-action:none;}
   #wrap{position:fixed;inset:0;}
   canvas{display:block;touch-action:none;}
-  .hud{position:absolute;top:calc(6px + env(safe-area-inset-top));left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:6px 12px;pointer-events:none;gap:8px;flex-wrap:wrap;}
+  .hud{position:absolute;top:calc(6px + env(safe-area-inset-top));left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:6px 60px 6px 12px;pointer-events:none;gap:8px;flex-wrap:wrap;}
   .pill{background:rgba(4,20,36,.72);backdrop-filter:blur(6px);border:1.5px solid rgba(53,224,200,.35);border-radius:999px;padding:6px 13px;color:#DFF7F2;font-weight:800;font-size:13px;display:flex;align-items:center;gap:7px;white-space:nowrap;}
   .pill small{font-weight:700;color:#8FD8CC;font-size:10px;letter-spacing:.06em;text-transform:uppercase;}
   #hearts span{font-size:15px;}
@@ -98,13 +98,13 @@
     <div class="eyebrow" style="font-size:12px">A true-facts ocean adventure</div>
     <h1 class="bigTitle">SHARK ODYSSEY</h1>
     <p class="sub">Campaign: become 10 real sharks. Sharkpedia &amp; Abyss: 58 species!<br/>Drag your finger to swim!</p>
-    <div style="font-size:13px;color:#FFD166;font-weight:800;margin:-8px 0 14px;text-shadow:0 2px 6px rgba(0,0,0,.5)">🌟 Made for Advaith &amp; Ayush 🌟</div>
+    <div id="dedication" style="font-size:13px;color:#FFD166;font-weight:800;margin:-8px 0 14px;text-shadow:0 2px 6px rgba(0,0,0,.5)"></div>
     <div style="margin-bottom:16px">
       <div class="eyebrow" style="margin-bottom:7px">Dive length — snacks per zone</div>
       <div class="tabs" style="margin-bottom:0">
-        <button class="tab lenBtn" data-len="6">🐟 Quick · 6</button>
-        <button class="tab lenBtn active" data-len="10">🐟🐟 Classic · 10</button>
-        <button class="tab lenBtn" data-len="15">🐟🐟🐟 Mega · 15</button>
+        <button class="tab lenBtn"></button>
+        <button class="tab lenBtn"></button>
+        <button class="tab lenBtn"></button>
       </div>
     </div>
     <div class="btnRow">
@@ -165,8 +165,8 @@
 <div class="overlay hidden" id="restScr">
   <div class="card">
     <div class="eyebrow">Ouch — three stings!</div>
-    <h2 class="title">Jellyfish Tangle!</h2>
-    <p class="fact">Even real sharks steer around jellyfish — those tentacles carry thousands of tiny stinging cells. Shake it off and keep hunting. Your fish count is safe!</p>
+    <h2 class="title" id="restTitle">Jellyfish Tangle!</h2>
+    <p class="fact" id="restWhy">Even real sharks steer around jellyfish — those tentacles carry thousands of tiny stinging cells. Shake it off and keep hunting. Your fish count is safe!</p>
     <p class="fact" style="background:rgba(53,224,200,.08);border:1px solid rgba(53,224,200,.25);border-radius:12px;padding:10px;font-size:12.5px" id="restFact"></p>
     <div class="btnRow">
       <button class="btn" id="restBtn">Swim Again</button>
@@ -193,8 +193,8 @@
 <div class="overlay hidden" id="endScr">
   <div class="card" style="max-width:540px">
     <div class="eyebrow">You reached the midnight deep!</div>
-    <h2 class="title">🏆 Shark Experts: Advaith &amp; Ayush</h2>
-    <p class="fact" style="margin:2px 0 8px;font-size:12px;color:#9BC8BF">Made with ❤️ for you · guardian seahorse sisters Mochi (Atisha) &amp; Boba (Sofia) 🌟🌟</p>
+    <h2 class="title" id="endTitle"></h2>
+    <p class="fact" style="margin:2px 0 8px;font-size:12px;color:#9BC8BF" id="endNote"></p>
     <p class="fact" style="margin-bottom:8px" id="endSummary"></p>
     <div class="viewerBox"><canvas id="endViewer" width="360" height="150"></canvas></div>
     <div class="spinHint">↺ your final form — the Greenland shark</div>
@@ -217,7 +217,25 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="window.__NO3D=1"></script>
 <script>
 "use strict";
-var FISH_PER_ZONE = 10; // set by the Dive Length picker on the title screen
+/* edition:start — scripts/build-web.js replaces this block with editions/store.js for the Play Store app */
+var EDITION = {
+  store: false,
+  dedication: "🌟 Made for Advaith & Ayush 🌟",
+  endTitle: "🏆 Shark Experts: Advaith & Ayush",
+  endNote: "Made with ❤️ for you · guardian seahorse sisters Mochi (Atisha) & Boba (Sofia) 🌟🌟",
+  twinsToast: "Seahorse sisters Mochi (Atisha) & Boba (Sofia) cast a bubble shield around you — the next jellyfish can't sting! They wave and swim away. 👋",
+  chestToast: "Advaith & Ayush's hidden chest — +5 snacks and a boost deeper!",
+  chestBadge: "Find Advaith & Ayush's secret treasure chest",
+  lengths: [["🐟 Quick · 6",6],["🐟🐟 Classic · 10",10],["🐟🐟🐟 Mega · 15",15]],
+  defaultLength: 10,
+  jellyCaps: [1,1,2,2,2,2,3,3,3,3], // per zone
+  jellyGap: 3600,                   // ms between jellyfish
+  snakeGap: 15000,                  // ms between sea snake chances
+  fishSpeed: 1,                     // multiplier on prey speed
+  loseProgressOnRest: false,        // running out of hearts resets the zone's snack count
+};
+/* edition:end */
+var FISH_PER_ZONE = EDITION.defaultLength; // set by the Dive Length picker on the title screen
 
 var ZONES = [
   { id:"blacktip", wiki:"Blacktip_reef_shark", zoneName:"Coral Shallows", depthBase:5, depthSpan:20, meters:1.6,
@@ -627,11 +645,12 @@ var BONUS_FACTS = [
   { title:"Atomic Birthday Math", emoji:"⚛️", text:"To check how old whale sharks get, scientists measured traces of old atom-bomb-test carbon in their vertebrae. Science detective work!" },
   { title:"Dragon Tongue Teeth", emoji:"🐉", text:"In the Middle Ages, people found fossil megalodon teeth and believed they were petrified dragon tongues!" },
   { title:"Rapids-Jumping Sharks", emoji:"🏞️", text:"Bull sharks reach Lake Nicaragua by leaping up river rapids — just like salmon." },
+  { title:"Snake Snacks", emoji:"🐍", text:"Tiger sharks are one of the few animals that eat sea snakes — scientists have found them in tiger shark stomachs!" },
 ];
 
 var BADGES = [
   { id:"first", name:"First Dive", emoji:"🥇", desc:"Finish your first zone" },
-  { id:"untouch", name:"Untouchable", emoji:"🛡️", desc:"Clear a zone with zero jellyfish stings" },
+  { id:"untouch", name:"Untouchable", emoji:"🛡️", desc:"Clear a zone with zero stings" },
   { id:"combo", name:"Speedy Snacker", emoji:"⚡", desc:"Eat 3 snacks in a quick combo" },
   { id:"facts3", name:"Fact Finder", emoji:"🔎", desc:"Collect 3 science orbs" },
   { id:"factsAll", name:"Shark Scientist", emoji:"🧠", desc:"Collect 10 science orbs" },
@@ -639,13 +658,15 @@ var BADGES = [
   { id:"master", name:"Ocean Master", emoji:"🏆", desc:"Finish all 8 zones" },
   { id:"perfect", name:"Perfect Run", emoji:"⭐", desc:"Finish the game without a single sting" },
   { id:"twins", name:"Twin Finder", emoji:"💞", desc:"Meet Mochi & Boba, the magical seahorse sisters" },
-  { id:"treasure", name:"Treasure Hunter", emoji:"🗝️", desc:"Find Advaith & Ayush's secret treasure chest" },
+  { id:"treasure", name:"Treasure Hunter", emoji:"🗝️", desc:EDITION.chestBadge },
   { id:"turbo", name:"Turbo Shark", emoji:"🌀", desc:"Catch a golden tuna and go full speed" },
   { id:"quiz", name:"Quiz Whiz", emoji:"🧩", desc:"Answer 5 shark quiz questions correctly" },
   { id:"abyss5", name:"Abyss Diver", emoji:"🌌", desc:"Reach Level 5 in endless Abyss Mode" },
+  { id:"snake", name:"Snake Dodger", emoji:"🐍", desc:"Let a black-and-white sea snake swim past without touching it" },
 ];
 
 var QUIZ = [
+  { q:"Why does a sea snake swim up to the surface?", opts:["To breathe air","To sunbathe","To catch birds"], ans:0 },
   { q:"Which shark can WALK on its fins?", opts:["Epaulette shark","Great white","Shortfin mako"], ans:0 },
   { q:"Which is the fastest shark in the ocean?", opts:["Tiger shark","Shortfin mako","Nurse shark"], ans:1 },
   { q:"What is the biggest fish in the ocean?", opts:["Great white","Blue whale","Whale shark"], ans:2 },
@@ -1167,6 +1188,7 @@ var g = {
   tunas:[], lastTuna:0, turboUntil:0, turboToastShown:false,
   quizPool:[], quizRight:0, pendingCard:null, shieldUntil:0,
   abyss:false, abyssLevel:0, bestAbyss:0, abyssSpec:null,
+  snakes:[], lastSnake:0, snakeToastShown:false, lastHit:"jelly",
 };
 
 function resize(){
@@ -1576,6 +1598,7 @@ function startGame(){
   g.tunas = []; g.lastTuna = performance.now(); g.turboUntil = 0; g.turboToastShown = false;
   g.quizPool = QUIZ.map(function(_,i){ return i; }); g.quizRight = 0; g.pendingCard = null; g.shieldUntil = 0;
   g.abyss = false; g.abyssLevel = 0;
+  g.snakes = []; g.lastSnake = performance.now(); g.snakeToastShown = false;
   updateHUD();
   showCard(0, null);
 }
@@ -1588,11 +1611,19 @@ $("abyssBtn").addEventListener("click", function(){
   g.abyssSpec = ALL_SPECIES[Math.floor(Math.random()*ALL_SPECIES.length)];
   g.meter = 0; g.hearts = 3; g.stingsThisZone = 0;
   g.fish = []; g.jellies = []; g.orbs = []; g.tunas = []; g.surprises = [];
+  g.snakes = []; g.lastSnake = performance.now();
   updateHUD();
   showToast("🌌 Abyss Mode!","Endless diving — a new random shark every level, and more jellyfish the deeper you go. How far can you get?",false);
   setScreen("play");
 });
-document.querySelectorAll(".lenBtn").forEach(function(lb){
+$("dedication").textContent = EDITION.dedication;
+$("dedication").classList.toggle("hidden", !EDITION.dedication);
+$("endTitle").textContent = EDITION.endTitle;
+$("endNote").textContent = EDITION.endNote;
+document.querySelectorAll(".lenBtn").forEach(function(lb,i){
+  lb.textContent = EDITION.lengths[i][0];
+  lb.dataset.len = EDITION.lengths[i][1];
+  lb.classList.toggle("active", EDITION.lengths[i][1]===EDITION.defaultLength);
   lb.addEventListener("click", function(){
     Sound.unlock();
     FISH_PER_ZONE = parseInt(lb.dataset.len, 10);
@@ -1632,7 +1663,7 @@ function spawnFood(zone){
       type:"plankton",
       x: Math.random()<0.5 ? -34 : W+34,
       y: 50 + Math.random()*(H-140),
-      vx: (Math.random()<0.5?1:-1)*(14+Math.random()*20),
+      vx: (Math.random()<0.5?1:-1)*(14+Math.random()*20)*EDITION.fishSpeed,
       r: 15,
       color: zone.fishColors[Math.floor(Math.random()*zone.fishColors.length)],
       seed: Math.random()*9,
@@ -1646,13 +1677,27 @@ function spawnFood(zone){
     type:"fish",
     x: fromLeft ? -30 : W+30,
     y: 40 + Math.random()*(H-120),
-    vx: (fromLeft?1:-1)*(40+Math.random()*60),
+    vx: (fromLeft?1:-1)*(40+Math.random()*60)*EDITION.fishSpeed,
     r: 8+Math.random()*5,
     color: zone.fishColors[Math.floor(Math.random()*zone.fishColors.length)],
     seed: Math.random()*9,
   });
 }
 function spawnJelly(){ g.jellies.push({x:40+Math.random()*(W-80),y:H+40,r:16+Math.random()*10,s:14+Math.random()*14,seed:Math.random()*9}); }
+function spawnSnake(){
+  var fromL = Math.random() < 0.5;
+  g.snakes.push({ x: fromL ? -30 : W+30, base: 80+Math.random()*(H-200), dir: fromL ? 1 : -1,
+    speed: 42+Math.random()*22, seed: Math.random()*9, segs: 20, gap: 10, touched:false, fleeing:false });
+}
+// body points of a sea snake, head first — a wave ripples from head to paddle tail
+function snakePoints(sn,t){
+  var pts = [];
+  for (var i=0;i<sn.segs;i++){
+    var wob = Math.sin(t*4.2 + sn.seed - i*0.55) * (6 + Math.min(i,6)*1.6);
+    pts.push({ x: sn.x - sn.dir*i*sn.gap, y: sn.base + wob + Math.sin(t*0.9+sn.seed)*10 });
+  }
+  return pts;
+}
 function spawnOrb(){ g.orbs.push({x:60+Math.random()*(W-120),y:-30,r:13,s:20,seed:Math.random()*9,kind:(Math.random()<0.3?"spot":"fact")}); }
 function burst(x,y,color){
   for (var i=0;i<10;i++){
@@ -1703,8 +1748,8 @@ function loop(now){
   if (playing){
     var foodGap = zone.food==="plankton" ? 1000 : 800;
     if (now-g.lastFish > foodGap && g.fish.length < 7){ spawnFood(zone); g.lastFish = now; }
-    var jellyCap = g.abyss ? Math.min(6, 2+Math.floor(g.abyssLevel/2)) : [1,1,2,2,2,2,3,3,3,3][g.zone];
-    if (now-g.lastJelly > 3600 && g.jellies.length < jellyCap){ spawnJelly(); g.lastJelly = now; }
+    var jellyCap = g.abyss ? Math.min(6, 2+Math.floor(g.abyssLevel/2)) : EDITION.jellyCaps[g.zone];
+    if (now-g.lastJelly > EDITION.jellyGap && g.jellies.length < jellyCap){ spawnJelly(); g.lastJelly = now; }
     if (now-g.lastOrb > 6500 && g.orbs.length < 1 && Math.random() < 0.75){ spawnOrb(); g.lastOrb = now; }
     if (now-g.lastTuna > 16000 && g.tunas.length===0 && !turbo && Math.random() < 0.55){
       var fromL = Math.random() < 0.5;
@@ -1722,6 +1767,14 @@ function loop(now){
         g.chestsSeen += 1;
       }
       g.lastSurprise = now;
+    }
+    // banded sea krait — a black-and-white sea snake that slithers across from zone 2 on
+    if ((g.zone >= 1 || g.abyss) && now-g.lastSnake > EDITION.snakeGap && g.snakes.length===0 && Math.random() < 0.6){
+      spawnSnake(); g.lastSnake = now;
+      if (!g.snakeToastShown){
+        g.snakeToastShown = true;
+        showToast("🐍 Sea Snake Ahead!","This is a banded sea krait. Its black-and-white stripes warn hungry animals to stay away! Sea snakes breathe air and paddle with a flat, oar-shaped tail. Swim around it!",false);
+      }
     }
   }
 
@@ -1741,6 +1794,19 @@ function loop(now){
   g.surprises = g.surprises.filter(function(sp){ return sp.x < W+100 && sp.y > -70 && !sp.gone; });
   g.tunas.forEach(function(tn){ tn.x += tn.vx*dt; tn.y += Math.sin(t*5+tn.seed)*40*dt; });
   g.tunas = g.tunas.filter(function(tn){ return tn.x > -80 && tn.x < W+80 && !tn.eaten; });
+  g.snakes.forEach(function(sn){
+    sn.x += sn.dir*sn.speed*(sn.fleeing?3:1)*dt;
+    if (sn.fleeing) sn.base -= 60*dt; // dart up toward the surface for a breath
+  });
+  g.snakes = g.snakes.filter(function(sn){
+    var tailX = sn.x - sn.dir*sn.segs*sn.gap;
+    var gone = sn.dir > 0 ? tailX > W+30 : tailX < -30;
+    if (gone && playing && !sn.touched){
+      floaty(sn.dir > 0 ? W-60 : 60, sn.base, "Dodged! 🐍", "#FFFFFF");
+      awardBadge("snake");
+    }
+    return !gone && sn.base > -60;
+  });
   g.particles.forEach(function(p){ p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 30*dt; p.life -= dt; });
   g.particles = g.particles.filter(function(p){ return p.life > 0; });
   g.floaties.forEach(function(f){ f.y -= 34*dt; f.life -= dt*0.7; });
@@ -1765,7 +1831,7 @@ function loop(now){
           if (g.stingsThisZone===0) awardBadge("untouch");
           if (g.zone===0) awardBadge("first");
           if (g.zone===4) awardBadge("half");
-          g.meter = 0; g.fish = []; g.jellies = []; g.orbs = [];
+          g.meter = 0; g.fish = []; g.jellies = []; g.orbs = []; g.snakes = [];
           if (g.abyss){
             g.abyssLevel += 1;
             if (g.abyssLevel > g.bestAbyss) g.bestAbyss = g.abyssLevel;
@@ -1824,7 +1890,7 @@ function loop(now){
           g.hearts = Math.min(3,g.hearts+1);
           g.shieldUntil = now + 20000;
           floaty(sp.x,sp.y-28,"+❤️ Twin Shield!","#FF9EC4");
-          showToast("🌟 Twin Power!","Seahorse sisters Mochi (Atisha) & Boba (Sofia) cast a bubble shield around you — the next jellyfish can't sting! They wave and swim away. 👋",false);
+          showToast("🌟 Twin Power!",EDITION.twinsToast,false);
           awardBadge("twins");
         } else {
           burst(sp.x,sp.y,"#FFD166"); burst(sp.x,sp.y,"#FFE9A8");
@@ -1832,49 +1898,68 @@ function loop(now){
           g.score += 5;
           g.meter = Math.min(FISH_PER_ZONE-1, g.meter+1);
           floaty(sp.x,sp.y-24,"+5!","#FFD166");
-          showToast("💎 Secret Treasure!","Advaith & Ayush's hidden chest — +5 snacks and a boost deeper!",false);
+          showToast("💎 Secret Treasure!",EDITION.chestToast,false);
           awardBadge("treasure");
         }
         updateHUD();
       }
     });
+    // jellies and sea snakes share one hit test: {x,y,r,hit()} per hazard part
+    var hazards = [];
+    g.jellies.forEach(function(j){
+      hazards.push({ x: j.x + Math.sin(t*1.4+j.seed)*12, y: j.y, r: j.r, kind:"jelly", hit: function(){ j.gone = true; } });
+    });
+    g.snakes.forEach(function(sn){
+      if (sn.fleeing) return;
+      snakePoints(sn,t).forEach(function(p){
+        hazards.push({ x: p.x, y: p.y, r: 9, kind:"snake", sn: sn, hit: function(){ sn.fleeing = true; sn.touched = true; } });
+      });
+    });
+    function touching(hz,k){ return Math.hypot(hz.x-sh.x,hz.y-sh.y) < eatR*k+hz.r; }
     if (turbo){
-      g.jellies.forEach(function(j){
-        var jx = j.x + Math.sin(t*1.4+j.seed)*12;
-        if (Math.hypot(jx-sh.x,j.y-sh.y) < eatR*0.9+j.r){
-          j.gone = true;
-          burst(jx,j.y,"#FF9EC4");
-          Sound.eat();
-          floaty(jx,j.y-16,"Bonk!","#FFD166");
-        }
+      hazards.forEach(function(hz){
+        if (hz.sn && hz.sn.fleeing) return; // one bonk per snake
+        if (!touching(hz,0.9)) return;
+        hz.hit();
+        burst(hz.x,hz.y, hz.kind==="snake" ? "#FFFFFF" : "#FF9EC4");
+        Sound.eat();
+        floaty(hz.x,hz.y-16,"Bonk!","#FFD166");
       });
     } else if (now < g.shieldUntil){
-      g.jellies.forEach(function(j){
-        var jx = j.x + Math.sin(t*1.4+j.seed)*12;
-        if (Math.hypot(jx-sh.x,j.y-sh.y) < eatR*0.85+j.r){
-          j.gone = true;
-          g.shieldUntil = 0;
-          burst(jx,j.y,"#FF9EC4");
-          Sound.eat();
-          floaty(jx,j.y-16,"🛡️ Twin Shield!","#FF9EC4");
-        }
-      });
+      for (var hi=0; hi<hazards.length; hi++){
+        var hz = hazards[hi];
+        if (!touching(hz,0.85)) continue;
+        hz.hit();
+        g.shieldUntil = 0;
+        burst(hz.x,hz.y, hz.kind==="snake" ? "#FFFFFF" : "#FF9EC4");
+        Sound.eat();
+        floaty(hz.x,hz.y-16,"🛡️ Twin Shield!","#FF9EC4");
+        break;
+      }
     } else if (now > g.invulnUntil){
-      g.jellies.forEach(function(j){
-        var jx = j.x + Math.sin(t*1.4+j.seed)*12;
-        if (Math.hypot(jx-sh.x,j.y-sh.y) < eatR*0.8+j.r){
-          j.gone = true; g.invulnUntil = now+1600; g.stungFlash = now+350;
-          Sound.sting();
-          g.hearts -= 1; g.stingsThisZone += 1; g.totalStings += 1; g.combo = 0;
-          updateHUD();
-          if (g.hearts <= 0){
-            $("restExitBtn").classList.toggle("hidden", !g.abyss);
-            var rf = BONUS_FACTS[Math.floor(Math.random()*BONUS_FACTS.length)];
-            $("restFact").innerHTML = "<b style=\"color:#7BE0AD\">" + rf.emoji + " While you rest — did you know?</b><br/>" + rf.text;
-            setScreen("rest");
-          }
+      for (var hj=0; hj<hazards.length; hj++){
+        var hz2 = hazards[hj];
+        if (!touching(hz2,0.8)) continue;
+        hz2.hit(); g.invulnUntil = now+1600; g.stungFlash = now+350; g.lastHit = hz2.kind;
+        Sound.sting();
+        if (hz2.kind==="snake") floaty(hz2.x,hz2.y-16,"Hiss! 🐍","#FFFFFF");
+        g.hearts -= 1; g.stingsThisZone += 1; g.totalStings += 1; g.combo = 0;
+        updateHUD();
+        if (g.hearts <= 0){
+          if (EDITION.loseProgressOnRest){ g.meter = 0; g.combo = 0; updateHUD(); }
+          $("restExitBtn").classList.toggle("hidden", !g.abyss);
+          var snakeHit = g.lastHit==="snake";
+          $("restTitle").textContent = snakeHit ? "Sea Snake Surprise!" : "Jellyfish Tangle!";
+          $("restWhy").textContent = snakeHit
+            ? "Sea snakes are shy, but their bite is very venomous — smart sharks give those black-and-white stripes plenty of room."
+            : "Even real sharks steer around jellyfish — those tentacles carry thousands of tiny stinging cells.";
+          $("restWhy").textContent += EDITION.loseProgressOnRest ? " This zone's hunt starts over — shake it off and try again." : " Shake it off and keep hunting. Your fish count is safe!";
+          var rf = BONUS_FACTS[Math.floor(Math.random()*BONUS_FACTS.length)];
+          $("restFact").innerHTML = "<b style=\"color:#7BE0AD\">" + rf.emoji + " While you rest — did you know?</b><br/>" + rf.text;
+          setScreen("rest");
         }
-      });
+        break;
+      }
     }
   }
 
@@ -1941,6 +2026,7 @@ function loop(now){
   g.tunas.forEach(function(tn){ drawTuna(ctx,tn,t); });
   g.surprises.forEach(function(sp){ if (sp.type==="twins") drawTwins(ctx,sp,t); else drawChest(ctx,sp,t); });
   g.jellies.forEach(function(j){ drawJelly(ctx,j,t,deepZone); });
+  g.snakes.forEach(function(sn){ drawSeaSnake(ctx,sn,t); });
 
   if (g.mode==="title" || g.mode==="play" || g.mode==="rest"){
     if (turbo){
@@ -2035,6 +2121,52 @@ function drawJelly(ctx,j,t,deep){
     ctx.quadraticCurveTo(i*j.r*0.32+Math.sin(t*2.5+i+j.seed)*6,j.r*1.2,i*j.r*0.32+Math.sin(t*2+i)*10,j.r*2);
     ctx.stroke();
   }
+  ctx.restore();
+}
+function drawSeaSnake(ctx,sn,t){
+  var pts = snakePoints(sn,t), n = pts.length;
+  function width(i){ return 6 + 9*Math.sin(Math.PI*Math.min(1,(i+1.5)/(n-2))); } // slim neck, thick middle, slim tail
+  ctx.save();
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  // grey outline so both stripe colours read on light and dark water
+  ctx.strokeStyle = "rgba(90,90,90,0.9)";
+  for (var i=0;i<n-1;i++){
+    ctx.lineWidth = width(i)+3;
+    ctx.beginPath(); ctx.moveTo(pts[i].x,pts[i].y); ctx.lineTo(pts[i+1].x,pts[i+1].y); ctx.stroke();
+  }
+  // black and white bands, two segments each
+  for (var k=0;k<n-1;k++){
+    ctx.strokeStyle = Math.floor(k/2)%2 ? "#F4F4F4" : "#111111";
+    ctx.lineWidth = width(k);
+    ctx.beginPath(); ctx.moveTo(pts[k].x,pts[k].y); ctx.lineTo(pts[k+1].x,pts[k+1].y); ctx.stroke();
+  }
+  // flat paddle tail, like an oar
+  var tl = pts[n-1], tp = pts[n-2];
+  var ta = Math.atan2(tl.y-tp.y, tl.x-tp.x);
+  ctx.save(); ctx.translate(tl.x,tl.y); ctx.rotate(ta);
+  ctx.fillStyle = "#111111"; ctx.strokeStyle = "rgba(90,90,90,0.9)"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(6,0,11,8+Math.sin(t*6+sn.seed)*1.5,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.restore();
+  // head: black with a pale snout, like a real banded sea krait
+  var hd = pts[0], nk = pts[1];
+  var ha = Math.atan2(hd.y-nk.y, hd.x-nk.x);
+  ctx.save(); ctx.translate(hd.x,hd.y); ctx.rotate(ha); ctx.scale(1.3,1.3);
+  ctx.fillStyle = "#111111"; ctx.strokeStyle = "rgba(90,90,90,0.9)"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(3,0,9,6.5,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#F4F4F4";
+  ctx.beginPath(); ctx.ellipse(9,0,3.5,4,0,0,Math.PI*2); ctx.fill();
+  // tongue flick (black and white like the rest of it)
+  if (Math.sin(t*3+sn.seed) > 0.75){
+    ctx.strokeStyle = "#F4F4F4"; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(12,0); ctx.lineTo(18,0); ctx.lineTo(21,-2.5); ctx.moveTo(18,0); ctx.lineTo(21,2.5); ctx.stroke();
+  }
+  ctx.fillStyle = "#FFFFFF";
+  ctx.beginPath(); ctx.arc(4,-3.6,2,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(4,3.6,2,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = "#000000";
+  ctx.beginPath(); ctx.arc(4.6,-3.6,1,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(4.6,3.6,1,0,Math.PI*2); ctx.fill();
+  ctx.restore();
   ctx.restore();
 }
 function drawOrb(ctx,o,t){

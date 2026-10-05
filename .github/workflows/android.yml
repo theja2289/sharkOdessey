@@ -1,0 +1,74 @@
+name: Build Android app
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Build web assets and sync into Android project
+        run: |
+          npm ci
+          npm run sync
+
+      - name: Decode signing keystore
+        if: ${{ env.KEYSTORE_B64 != '' }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+
+      - name: Build test APK (install on a phone)
+        working-directory: android
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Build Play Store bundle (.aab)
+        if: ${{ env.KEYSTORE_B64 != '' }}
+        working-directory: android
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew bundleRelease
+
+      - name: Collect files with friendly names
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk "dist/shark-odyssey-TEST-ON-PHONE.apk"
+          if [ -n "$KEYSTORE_B64" ]; then
+            cp android/app/build/outputs/bundle/release/app-release.aab "dist/shark-odyssey-UPLOAD-TO-PLAY-v${{ github.run_number }}.aab"
+            echo "### ✅ Ready for Google Play" >> "$GITHUB_STEP_SUMMARY"
+            echo "Download **shark-odyssey-android** below. Upload the \`.aab\` to Play Console (version code ${{ github.run_number }}); the \`.apk\` is for trying on a phone." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### ⚠️ Only the test APK was built" >> "$GITHUB_STEP_SUMMARY"
+            echo "The Play Store \`.aab\` needs your upload key. Follow step 2 in ANDROID.md to add the 4 secrets, then run this workflow again." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shark-odyssey-android
+          path: dist/

@@ -24,7 +24,8 @@ for (const name of ["Advaith", "Ayush", "Atisha", "Sofia"]) {
 fs.writeFileSync(path.join(out, "index.html"), html);
 
 fs.copyFileSync(require.resolve("three/build/three.min.js"), path.join(out, "three.min.js"));
-for (const f of ["manifest.json", "icon-192.png", "icon-512.png", "sw.js"]) {
+// sw.js is left out on purpose: the app already has every file locally, and a cache would only risk stale updates
+for (const f of ["manifest.json", "icon-192.png", "icon-512.png"]) {
   if (fs.existsSync(path.join(root, f))) fs.copyFileSync(path.join(root, f), path.join(out, f));
 }
 console.log("Built www/");

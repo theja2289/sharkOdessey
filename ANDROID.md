@@ -4,6 +4,10 @@ The game is packaged as an Android app with [Capacitor](https://capacitorjs.com)
 The app wraps `index.html` with the 3D library bundled in, so the game runs offline.
 Only the optional Wikipedia shark photos need internet.
 
+### Why Capacitor and not a TWA
+
+A Trusted Web Activity just opens the GitHub Pages site inside a Chrome window. That would put the family edition, names and all, into the Play Store, and the app would need internet to start. Capacitor bundles the store edition inside the app, so it plays offline.
+
 ## Two editions
 
 - **Family edition** is `index.html` as it is, for the web. It keeps the dedication to Advaith & Ayush, the real names, and the shorter 6/10/15-snack zones.
@@ -62,13 +66,13 @@ npm run android:open   # opens Android Studio → Build → Generate Signed App 
 2. Click **Create app**, name it "Shark Odyssey", choose **Game**, and choose **Free**.
 3. Fill in the **App content** section. Because this is a kids' game, these parts matter most:
    - **Target audience**: pick the age groups, for example 6–8 and 9–12. This puts the app under Google's **Families policy**.
-   - **Privacy policy URL**: required for apps aimed at children. A simple page works, for example: "Shark Odyssey collects no personal data. It has no ads, no accounts, and no tracking. It loads public shark photos from Wikipedia."
+   - **Privacy policy URL**: required for apps aimed at children. Use `https://theja2289.github.io/sharkOdessey/privacy.html`. It's in this repo as `privacy.html` and goes live on Pages once this branch is merged.
    - **Data safety**: no data collected and no data shared.
    - **Ads**: no ads.
    - **Content rating**: fill in the IARC questionnaire. Expect "Everyone" or PEGI 3.
 4. Fill in the **Store listing**:
    - 512×512 icon: `icon-512.png`
-   - 1024×500 feature graphic
+   - 1024×500 feature graphic: `feature-graphic.png`
    - at least 2 phone screenshots
 5. Upload `app-release.aab`. Start with **Testing → Internal testing**.
    New personal developer accounts must run a **closed test with at least 12 testers for 14 days** before they can publish to Production. Check Play Console for the current rule.

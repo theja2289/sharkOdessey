@@ -24,7 +24,9 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - uses: android-actions/setup-android@v3
+      # GitHub's ubuntu runners ship the Android SDK (ANDROID_HOME); Gradle fetches any missing pieces.
+      - name: Check Android SDK
+        run: echo "Android SDK at $ANDROID_HOME" && ls "$ANDROID_HOME"
 
       - name: Build web assets and sync into Android project
         run: |

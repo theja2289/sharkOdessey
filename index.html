@@ -31,6 +31,7 @@
   .hidden{display:none !important;}
   .card{background:linear-gradient(175deg,#0B2C46,#06182B);border:2px solid rgba(53,224,200,.5);border-radius:22px;padding:20px 20px 18px;max-width:440px;width:100%;color:#EAF7F4;box-shadow:0 24px 60px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.08);animation:pop .45s cubic-bezier(.34,1.5,.5,1);text-align:center;max-height:94vh;overflow:auto;-webkit-overflow-scrolling:touch;}
   @keyframes pop{from{transform:translateY(26px) scale(.94);opacity:0}to{transform:none;opacity:1}}
+  @keyframes toastPop{from{transform:translate(-50%,26px) scale(.94);opacity:0}to{transform:translateX(-50%);opacity:1}}
   @media (prefers-reduced-motion:reduce){.card{animation:none}#fill{transition:none}}
   .eyebrow{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#35E0C8;font-weight:800;margin-bottom:5px;}
   .title{font-family:'Baloo 2',sans-serif;font-size:27px;line-height:1.05;margin:0 0 2px;color:#fff;}
@@ -49,7 +50,7 @@
   .btnRow{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;}
   .bigTitle{font-family:'Baloo 2',sans-serif;font-size:clamp(36px,10vw,62px);color:#fff;margin:0;line-height:1;text-shadow:0 4px 0 rgba(4,40,60,.6),0 12px 30px rgba(0,0,0,.4);}
   .sub{color:#CFF3EC;font-size:14.5px;font-weight:700;margin:10px 0 20px;text-shadow:0 2px 6px rgba(0,0,0,.5);}
-  #toast{position:absolute;bottom:calc(64px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(400px,88vw);background:linear-gradient(175deg,#0B3C40,#06232B);border:2px solid rgba(123,224,173,.55);border-radius:16px;padding:11px 14px;color:#EAF7F4;box-shadow:0 16px 40px rgba(0,0,0,.5);animation:pop .4s cubic-bezier(.34,1.5,.5,1);pointer-events:none;z-index:6;}
+  #toast{position:absolute;bottom:calc(64px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(400px,88vw);background:linear-gradient(175deg,#0B3C40,#06232B);border:2px solid rgba(123,224,173,.55);border-radius:16px;padding:11px 14px;color:#EAF7F4;box-shadow:0 16px 40px rgba(0,0,0,.5);animation:toastPop .4s cubic-bezier(.34,1.5,.5,1);pointer-events:none;z-index:6;}
   #toast b{font-family:'Baloo 2',sans-serif;color:#7BE0AD;font-size:14.5px;display:block;margin-bottom:2px;}
   #toast p{margin:0;font-size:12.5px;line-height:1.45;}
   #toast.badge{border-color:#FFD166;background:linear-gradient(175deg,#3A2E0B,#241C06);}
@@ -164,7 +165,7 @@
 
 <div class="overlay hidden" id="restScr">
   <div class="card">
-    <div class="eyebrow">Ouch — three stings!</div>
+    <div class="eyebrow">Ouch — out of hearts!</div>
     <h2 class="title" id="restTitle">Jellyfish Tangle!</h2>
     <p class="fact" id="restWhy">Even real sharks steer around jellyfish — those tentacles carry thousands of tiny stinging cells. Shake it off and keep hunting. Your fish count is safe!</p>
     <p class="fact" style="background:rgba(53,224,200,.08);border:1px solid rgba(53,224,200,.25);border-radius:12px;padding:10px;font-size:12.5px" id="restFact"></p>
@@ -233,6 +234,10 @@ var EDITION = {
   snakeGap: 15000,                  // ms between sea snake chances
   fishSpeed: 1,                     // multiplier on prey speed
   loseProgressOnRest: false,        // running out of hearts resets the zone's snack count
+  coralGap: 30000,                  // ms between glowing-coral chances (eating one starts a Dolphin Duel)
+  duelHits: 3,                      // bumps on a dizzy dolphin needed to win the duel
+  duelSeconds: 25,                  // duel time limit before it's a draw
+  dolphinSpeed: 420,                // dolphin charge speed, px/s
 };
 /* edition:end */
 var FISH_PER_ZONE = EDITION.defaultLength; // set by the Dive Length picker on the title screen
@@ -645,6 +650,8 @@ var BONUS_FACTS = [
   { title:"Atomic Birthday Math", emoji:"⚛️", text:"To check how old whale sharks get, scientists measured traces of old atom-bomb-test carbon in their vertebrae. Science detective work!" },
   { title:"Dragon Tongue Teeth", emoji:"🐉", text:"In the Middle Ages, people found fossil megalodon teeth and believed they were petrified dragon tongues!" },
   { title:"Rapids-Jumping Sharks", emoji:"🏞️", text:"Bull sharks reach Lake Nicaragua by leaping up river rapids — just like salmon." },
+  { title:"Dolphin Spa Day", emoji:"🪸", text:"Bottlenose dolphins in the Red Sea line up to rub against certain corals — scientists think the coral's slime may soothe their skin like medicine!" },
+  { title:"Dolphins vs Sharks", emoji:"🐬", text:"Bottlenose dolphins can stand up to sharks — they team up and ram them with their strong snouts until the shark swims away." },
   { title:"Snake Snacks", emoji:"🐍", text:"Tiger sharks are one of the few animals that eat sea snakes — scientists have found them in tiger shark stomachs!" },
 ];
 
@@ -662,10 +669,12 @@ var BADGES = [
   { id:"turbo", name:"Turbo Shark", emoji:"🌀", desc:"Catch a golden tuna and go full speed" },
   { id:"quiz", name:"Quiz Whiz", emoji:"🧩", desc:"Answer 5 shark quiz questions correctly" },
   { id:"abyss5", name:"Abyss Diver", emoji:"🌌", desc:"Reach Level 5 in endless Abyss Mode" },
+  { id:"dolphin", name:"Dolphin Duelist", emoji:"🐬", desc:"Win a Dolphin Duel" },
   { id:"snake", name:"Snake Dodger", emoji:"🐍", desc:"Let a black-and-white sea snake swim past without touching it" },
 ];
 
 var QUIZ = [
+  { q:"How do bottlenose dolphins chase sharks away?", opts:["Ramming with their snouts","Squirting ink","Electric zaps"], ans:0 },
   { q:"Why does a sea snake swim up to the surface?", opts:["To breathe air","To sunbathe","To catch birds"], ans:0 },
   { q:"Which shark can WALK on its fins?", opts:["Epaulette shark","Great white","Shortfin mako"], ans:0 },
   { q:"Which is the fastest shark in the ocean?", opts:["Tiger shark","Shortfin mako","Nurse shark"], ans:1 },
@@ -1189,6 +1198,7 @@ var g = {
   quizPool:[], quizRight:0, pendingCard:null, shieldUntil:0,
   abyss:false, abyssLevel:0, bestAbyss:0, abyssSpec:null,
   snakes:[], lastSnake:0, snakeToastShown:false, lastHit:"jelly",
+  corals:[], lastCoral:0, duel:null, duelToastShown:false, shakeUntil:0,
 };
 
 function resize(){
@@ -1599,6 +1609,7 @@ function startGame(){
   g.quizPool = QUIZ.map(function(_,i){ return i; }); g.quizRight = 0; g.pendingCard = null; g.shieldUntil = 0;
   g.abyss = false; g.abyssLevel = 0;
   g.snakes = []; g.lastSnake = performance.now(); g.snakeToastShown = false;
+  g.corals = []; g.duel = null; g.duelToastShown = false; g.lastCoral = performance.now() - EDITION.coralGap*0.4;
   updateHUD();
   showCard(0, null);
 }
@@ -1612,6 +1623,7 @@ $("abyssBtn").addEventListener("click", function(){
   g.meter = 0; g.hearts = 3; g.stingsThisZone = 0;
   g.fish = []; g.jellies = []; g.orbs = []; g.tunas = []; g.surprises = [];
   g.snakes = []; g.lastSnake = performance.now();
+  g.corals = []; g.duel = null; g.lastCoral = performance.now() - EDITION.coralGap*0.4;
   updateHUD();
   showToast("🌌 Abyss Mode!","Endless diving — a new random shark every level, and more jellyfish the deeper you go. How far can you get?",false);
   setScreen("play");
@@ -1698,6 +1710,245 @@ function snakePoints(sn,t){
   }
   return pts;
 }
+/* ---------- shark takes a hit (jellyfish, sea snake or dolphin ram) ---------- */
+var HIT_TEXT = {
+  jelly:   ["Jellyfish Tangle!", "Even real sharks steer around jellyfish — those tentacles carry thousands of tiny stinging cells."],
+  snake:   ["Sea Snake Surprise!", "Sea snakes are shy, but their bite is very venomous — smart sharks give those black-and-white stripes plenty of room."],
+  dolphin: ["Dolphin Bonk!", "Bottlenose dolphins are tough — they ram sharks with their strong snouts, and the shark usually swims away to regroup."],
+};
+function hurtShark(kind, x, y, now){
+  g.invulnUntil = now+1600; g.stungFlash = now+350; g.lastHit = kind;
+  Sound.sting();
+  if (kind==="snake") floaty(x,y-16,"Hiss! 🐍","#FFFFFF");
+  if (kind==="dolphin") floaty(x,y-16,"Rammed! 🐬","#CFE8F7");
+  g.hearts -= 1; g.stingsThisZone += 1; g.totalStings += 1; g.combo = 0;
+  updateHUD();
+  if (g.hearts > 0) return;
+  g.duel = null;
+  if (EDITION.loseProgressOnRest){ g.meter = 0; g.combo = 0; updateHUD(); }
+  $("restExitBtn").classList.toggle("hidden", !g.abyss);
+  var txt = HIT_TEXT[kind] || HIT_TEXT.jelly;
+  $("restTitle").textContent = txt[0];
+  $("restWhy").textContent = txt[1] + (EDITION.loseProgressOnRest ? " This zone's hunt starts over — shake it off and try again." : " Shake it off and keep hunting. Your fish count is safe!");
+  var rf = BONUS_FACTS[Math.floor(Math.random()*BONUS_FACTS.length)];
+  $("restFact").innerHTML = "<b style=\"color:#7BE0AD\">" + rf.emoji + " While you rest — did you know?</b><br/>" + rf.text;
+  setScreen("rest");
+}
+
+/* ---------- Dolphin Duel ----------
+   circle → windup ("!") → charge. A hit on the shark costs a heart; a miss leaves the
+   dolphin dizzy, and bumping it while dizzy scores a hit. Win with EDITION.duelHits hits. */
+function startDuel(now){
+  var sh = g.shark;
+  g.duel = { x: sh.x < W/2 ? W+80 : -80, y: Math.max(90, Math.min(H-90, sh.y)), vx:0, vy:0,
+    face: sh.x < W/2 ? -1 : 1, phase:"enter", until: now+1300, hits:0,
+    end: now + 1300 + EDITION.duelSeconds*1000, dx:0, dy:0, ax:0, ay:0, hitAt:0 };
+  Sound.power();
+  g.shakeUntil = now + 450;
+  floaty(sh.x, sh.y-70, "🔥 FEEDING FRENZY!", "#FF8A65");
+  floaty(sh.x, sh.y-44, "🐬 DOLPHIN DUEL!", "#CFE8F7");
+  if (!g.duelToastShown){
+    g.duelToastShown = true;
+    showToast("🔥 Frenzy vs Dolphin!","You gobbled a dolphin's favorite coral and went into a feeding frenzy — now you're extra fast! (Real bottlenose dolphins rub on corals like skin medicine.) When you see “!”, swim out of the way! When it misses it gets dizzy — bump it " + EDITION.duelHits + " times to win!",false);
+  }
+}
+function duelHit(d, now){
+  d.hits += 1; d.hitAt = now;
+  burst(d.x,d.y,"#CFE8F7"); burst(d.x,d.y,"#FFD166");
+  Sound.eat();
+  // knocked back away from the shark
+  var a = Math.atan2(d.y-g.shark.y, d.x-g.shark.x);
+  d.vx = Math.cos(a)*260; d.vy = Math.sin(a)*260;
+  if (d.hits >= EDITION.duelHits){
+    d.phase = "win"; d.until = now+2000;
+    Sound.badge();
+    g.score += 5; g.meter = Math.min(FISH_PER_ZONE-1, g.meter+2); updateHUD();
+    floaty(d.x, d.y-40, "🏆 YOU WIN! +5", "#FFD166");
+    awardBadge("dolphin");
+    return;
+  }
+  floaty(d.x, d.y-36, "Bonk! " + d.hits + "/" + EDITION.duelHits, "#FFD166");
+  d.phase = "circle"; d.until = now+1400+Math.random()*700;
+}
+function updateDuel(d, dt, now, t, eatR, turbo){
+  var sh = g.shark;
+  var dist = Math.hypot(d.x-sh.x, d.y-sh.y);
+  var touch = dist < eatR*0.75 + 26;
+  if ((d.phase==="win" || d.phase==="leave")){
+    d.x += d.face*300*dt; d.y -= 40*dt;
+    if (d.x < -140 || d.x > W+140 || now > d.until) g.duel = null;
+    return;
+  }
+  if (now > d.end){
+    d.phase = "leave"; d.until = now+2500; d.face = d.x < W/2 ? -1 : 1;
+    floaty(d.x, d.y-36, "Draw! The dolphin swims off 👋", "#CFE8F7");
+    return;
+  }
+  // turbo shark bonks the dolphin on any touch
+  if (turbo && touch && now-d.hitAt > 700){ duelHit(d, now); return; }
+
+  if (d.phase==="enter" || d.phase==="circle"){
+    var ang = t*1.3, tx, ty;
+    if (d.phase==="enter"){ tx = sh.x + (d.x > sh.x ? 170 : -170); ty = sh.y; }
+    else { tx = sh.x + Math.cos(ang)*170; ty = sh.y + Math.sin(ang)*110; }
+    tx = Math.max(75, Math.min(W-75, tx)); ty = Math.max(70, Math.min(H-70, ty));
+    d.vx += (tx-d.x)*3.2*dt; d.vy += (ty-d.y)*3.2*dt;
+    d.vx *= 0.9; d.vy *= 0.9;
+    d.x += d.vx*dt*4; d.y += d.vy*dt*4;
+    if (d.phase==="circle"){ d.x = Math.max(75, Math.min(W-75, d.x)); d.y = Math.max(70, Math.min(H-70, d.y)); }
+    d.face = sh.x >= d.x ? 1 : -1;
+    if (now > d.until){ d.phase = "windup"; d.until = now+750; d.ax = sh.x; d.ay = sh.y; } // aim locks when the "!" appears
+  } else if (d.phase==="windup"){
+    d.vx *= 0.8; d.vy *= 0.8; d.x += d.vx*dt; d.y += d.vy*dt;
+    d.face = d.ax >= d.x ? 1 : -1;
+    if (now > d.until){
+      var a = Math.atan2(d.ay-d.y, d.ax-d.x);
+      d.dx = Math.cos(a); d.dy = Math.sin(a);
+      d.phase = "charge"; d.until = now+1000;
+      Sound.dive();
+    }
+  } else if (d.phase==="charge"){
+    d.x += d.dx*EDITION.dolphinSpeed*dt; d.y += d.dy*EDITION.dolphinSpeed*dt;
+    d.face = d.dx >= 0 ? 1 : -1;
+    if (touch){
+      if (now < g.shieldUntil){
+        g.shieldUntil = 0;
+        floaty(sh.x, sh.y-40, "🛡️ Twin Shield!", "#FF9EC4");
+        burst(sh.x, sh.y, "#FF9EC4"); Sound.eat();
+      } else if (now > g.invulnUntil){
+        hurtShark("dolphin", sh.x, sh.y, now);
+        if (!g.duel) return; // out of hearts
+      }
+      d.dx = -d.dx; d.dy = -d.dy; // bounce off
+      d.phase = "circle"; d.until = now+1500;
+      return;
+    }
+    var wall = d.x < 75 || d.x > W-75 || d.y < 70 || d.y > H-70; // dolphin is ~150px long: stay fully on screen
+    if (wall || now > d.until){
+      d.x = Math.max(75, Math.min(W-75, d.x)); d.y = Math.max(70, Math.min(H-70, d.y));
+      d.phase = "dizzy"; d.until = now+1800;
+      floaty(d.x, d.y-36, "Missed! Dizzy 💫", "#CFE8F7");
+    }
+  } else if (d.phase==="dizzy"){
+    d.x += Math.sin(t*3)*10*dt; d.y += Math.cos(t*2.4)*8*dt;
+    if (touch && now-d.hitAt > 500){ duelHit(d, now); return; }
+    if (now > d.until){ d.phase = "circle"; d.until = now+1200+Math.random()*800; }
+  }
+}
+function drawDolphin(ctx,d,t,now){
+  var L = 118;
+  ctx.save();
+  ctx.translate(d.x, d.y + (d.phase==="dizzy" ? Math.sin(t*6)*3 : 0));
+  if (d.phase==="windup") ctx.translate(Math.sin(t*60)*2, 0); // revving up
+  var tilt = d.phase==="charge" ? Math.atan2(d.dy, Math.abs(d.dx))*0.6 : Math.sin(t*2)*0.06;
+  ctx.scale(d.face, 1); ctx.rotate(tilt);
+  if (now-d.hitAt < 300) ctx.globalAlpha = 0.55;
+  var tail = Math.sin(t*(d.phase==="charge" ? 22 : 9))*L*0.05;
+  ctx.lineJoin = "round";
+  // flukes
+  ctx.fillStyle = "#6F8090";
+  ctx.beginPath();
+  ctx.moveTo(-L*0.44, tail*0.4);
+  ctx.quadraticCurveTo(-L*0.55, -L*0.06+tail, -L*0.63, -L*0.13+tail);
+  ctx.quadraticCurveTo(-L*0.58, tail, -L*0.63, L*0.13+tail);
+  ctx.quadraticCurveTo(-L*0.55, L*0.06+tail, -L*0.44, tail*0.4);
+  ctx.fill();
+  // dorsal fin
+  ctx.beginPath();
+  ctx.moveTo(-L*0.02, -L*0.15);
+  ctx.quadraticCurveTo(-L*0.06, -L*0.3, -L*0.17, -L*0.33);
+  ctx.quadraticCurveTo(-L*0.13, -L*0.22, -L*0.17, -L*0.12);
+  ctx.closePath(); ctx.fill();
+  // body
+  var gr = ctx.createLinearGradient(0,-L*0.18,0,L*0.17);
+  gr.addColorStop(0,"#6F8090"); gr.addColorStop(0.55,"#9AAAB7"); gr.addColorStop(1,"#E4EBF0");
+  ctx.fillStyle = gr;
+  ctx.beginPath();
+  ctx.moveTo(L*0.56, L*0.035);                                          // tip of the bottle nose
+  ctx.quadraticCurveTo(L*0.5, -L*0.035, L*0.38, -L*0.05);               // top of the beak
+  ctx.quadraticCurveTo(L*0.33, -L*0.17, L*0.18, -L*0.16);               // rounded melon
+  ctx.quadraticCurveTo(-L*0.15, -L*0.19, -L*0.44, tail*0.4-L*0.025);    // back to tail stock
+  ctx.quadraticCurveTo(-L*0.15, L*0.14, L*0.12, L*0.14);                // belly
+  ctx.quadraticCurveTo(L*0.38, L*0.12, L*0.56, L*0.035);                // chin
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "rgba(40,55,70,0.35)"; ctx.lineWidth = 1.2; ctx.stroke();
+  // flipper
+  ctx.fillStyle = "#7D8E9C";
+  ctx.beginPath();
+  ctx.moveTo(L*0.2, L*0.07);
+  ctx.quadraticCurveTo(L*0.14, L*0.2, L*0.04, L*0.24);
+  ctx.quadraticCurveTo(L*0.1, L*0.13, L*0.1, L*0.08);
+  ctx.closePath(); ctx.fill();
+  // smile, eye, blowhole
+  ctx.strokeStyle = "rgba(30,40,50,0.6)"; ctx.lineWidth = 1.6; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(L*0.54, L*0.04); ctx.quadraticCurveTo(L*0.44, L*0.06, L*0.34, L*0.02); ctx.stroke();
+  ctx.fillStyle = "#1A2430";
+  ctx.beginPath(); ctx.arc(L*0.29, -L*0.035, 3, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = "#FFFFFF";
+  ctx.beginPath(); ctx.arc(L*0.297, -L*0.042, 1, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = "rgba(30,40,50,0.5)";
+  ctx.beginPath(); ctx.ellipse(L*0.12, -L*0.165, 2.4, 1.2, 0, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+  ctx.globalAlpha = 1;
+  // state markers (drawn unflipped so text reads correctly)
+  ctx.save(); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  if (d.phase==="windup"){
+    ctx.fillStyle = "#FFD166"; ctx.font = "800 30px 'Baloo 2', sans-serif";
+    ctx.fillText("!", d.x, d.y-L*0.42 + Math.sin(t*20)*2);
+  } else if (d.phase==="dizzy"){
+    ctx.font = "14px sans-serif";
+    for (var i=0;i<3;i++){
+      var a = t*5 + i*Math.PI*2/3;
+      ctx.fillText("⭐", d.x + d.face*L*0.25 + Math.cos(a)*18, d.y - L*0.3 + Math.sin(a)*6);
+    }
+  } else if (d.phase==="charge"){
+    ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 2.5; ctx.lineCap = "round";
+    for (var k=-1;k<=1;k++){
+      var bx = d.x - d.dx*L*0.6, by = d.y - d.dy*L*0.6 + k*12;
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx - d.dx*30, by - d.dy*30); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+function drawDuelBanner(ctx,d,now){
+  var secs = Math.max(0, Math.ceil((d.end-now)/1000));
+  var txt = "🐬 DOLPHIN DUEL  ";
+  for (var i=0;i<EDITION.duelHits;i++) txt += i < d.hits ? "●" : "○";
+  if (d.phase!=="win" && d.phase!=="leave") txt += "  " + secs + "s";
+  ctx.save();
+  ctx.font = "800 15px 'Baloo 2', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  var w = ctx.measureText(txt).width + 28, x = W/2, y = H - 78;
+  ctx.fillStyle = "rgba(4,20,36,0.78)"; ctx.strokeStyle = "rgba(207,232,247,0.6)"; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x-w/2, y-15, w, 30, 15); else ctx.rect(x-w/2, y-15, w, 30);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#CFE8F7"; ctx.fillText(txt, x, y+1);
+  ctx.restore();
+}
+function drawCoral(ctx,c,t){
+  ctx.save(); ctx.translate(c.x + Math.sin(t*1.5+c.seed)*8, c.y);
+  ctx.rotate(Math.sin(t*1.2+c.seed)*0.15);
+  ctx.shadowColor = "#FF8FA3"; ctx.shadowBlur = 18 + Math.sin(t*4)*6;
+  ctx.strokeStyle = "#FF7F96"; ctx.lineCap = "round";
+  // a little branching coral sprig
+  function branch(x,y,len,ang,w,depth){
+    var x2 = x + Math.cos(ang)*len, y2 = y + Math.sin(ang)*len;
+    ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x2,y2); ctx.stroke();
+    if (depth > 0){
+      branch(x2,y2,len*0.7,ang-0.55,w*0.7,depth-1);
+      branch(x2,y2,len*0.7,ang+0.5,w*0.7,depth-1);
+    }
+  }
+  branch(0,12,11,-Math.PI/2,5,2);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "#FFD3DC";
+  [[-9,-14],[9,-12],[-3,-20],[4,-17]].forEach(function(p){ ctx.beginPath(); ctx.arc(p[0],p[1],1.8,0,Math.PI*2); ctx.fill(); });
+  ctx.globalAlpha = 0.5+0.5*Math.sin(t*5+c.seed);
+  ctx.font = "12px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("✨", 14, -20);
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
 function spawnOrb(){ g.orbs.push({x:60+Math.random()*(W-120),y:-30,r:13,s:20,seed:Math.random()*9,kind:(Math.random()<0.3?"spot":"fact")}); }
 function burst(x,y,color){
   for (var i=0;i<10;i++){
@@ -1736,10 +1987,12 @@ function loop(now){
     g.target.y = H*0.42 + Math.sin(t*1.1)*40;
   }
   var turbo = now < g.turboUntil;
-  var ease = turbo ? 6.2 : 3.2;
+  // eating glowing coral sends the shark into a feeding frenzy for the whole Dolphin Duel
+  var frenzy = g.mode==="play" && !!g.duel && g.duel.phase!=="win" && g.duel.phase!=="leave";
+  var ease = turbo ? 6.2 : (frenzy ? 5 : 3.2);
   sh.vx += (g.target.x-sh.x)*ease*dt;
   sh.vy += (g.target.y-sh.y)*ease*dt;
-  var damp = turbo ? 0.935 : 0.92;
+  var damp = (turbo || frenzy) ? 0.935 : 0.92;
   sh.vx *= damp; sh.vy *= damp;
   sh.x += sh.vx*dt*4; sh.y += sh.vy*dt*4;
   sh.x = Math.max(30,Math.min(W-30,sh.x));
@@ -1749,7 +2002,7 @@ function loop(now){
     var foodGap = zone.food==="plankton" ? 1000 : 800;
     if (now-g.lastFish > foodGap && g.fish.length < 7){ spawnFood(zone); g.lastFish = now; }
     var jellyCap = g.abyss ? Math.min(6, 2+Math.floor(g.abyssLevel/2)) : EDITION.jellyCaps[g.zone];
-    if (now-g.lastJelly > EDITION.jellyGap && g.jellies.length < jellyCap){ spawnJelly(); g.lastJelly = now; }
+    if (now-g.lastJelly > EDITION.jellyGap && g.jellies.length < jellyCap && !g.duel){ spawnJelly(); g.lastJelly = now; }
     if (now-g.lastOrb > 6500 && g.orbs.length < 1 && Math.random() < 0.75){ spawnOrb(); g.lastOrb = now; }
     if (now-g.lastTuna > 16000 && g.tunas.length===0 && !turbo && Math.random() < 0.55){
       var fromL = Math.random() < 0.5;
@@ -1768,8 +2021,13 @@ function loop(now){
       }
       g.lastSurprise = now;
     }
+    // glowing coral — eating it starts a Dolphin Duel
+    if (!g.duel && g.corals.length===0 && now-g.lastCoral > EDITION.coralGap && Math.random() < 0.6){
+      g.corals.push({ x: 60+Math.random()*(W-120), y: -30, s: 18, seed: Math.random()*9 });
+      g.lastCoral = now;
+    }
     // banded sea krait — a black-and-white sea snake that slithers across from zone 2 on
-    if ((g.zone >= 1 || g.abyss) && now-g.lastSnake > EDITION.snakeGap && g.snakes.length===0 && Math.random() < 0.6){
+    if ((g.zone >= 1 || g.abyss) && now-g.lastSnake > EDITION.snakeGap && !g.duel && g.snakes.length===0 && Math.random() < 0.6){
       spawnSnake(); g.lastSnake = now;
       if (!g.snakeToastShown){
         g.snakeToastShown = true;
@@ -1784,6 +2042,8 @@ function loop(now){
   g.jellies = g.jellies.filter(function(j){ return j.y > -80 && !j.gone; });
   g.orbs.forEach(function(o){ o.y += o.s*dt; });
   g.orbs = g.orbs.filter(function(o){ return o.y < H+40 && !o.gone; });
+  g.corals.forEach(function(c){ c.y += c.s*dt; });
+  g.corals = g.corals.filter(function(c){ return c.y < H+40 && !c.eaten; });
   g.surprises.forEach(function(sp){
     if (sp.type==="twins"){
       if (sp.leaving){ sp.y -= 70*dt; sp.x += 30*dt; }
@@ -1831,7 +2091,7 @@ function loop(now){
           if (g.stingsThisZone===0) awardBadge("untouch");
           if (g.zone===0) awardBadge("first");
           if (g.zone===4) awardBadge("half");
-          g.meter = 0; g.fish = []; g.jellies = []; g.orbs = []; g.snakes = [];
+          g.meter = 0; g.fish = []; g.jellies = []; g.orbs = []; g.snakes = []; g.corals = []; g.duel = null;
           if (g.abyss){
             g.abyssLevel += 1;
             if (g.abyssLevel > g.bestAbyss) g.bestAbyss = g.abyssLevel;
@@ -1904,6 +2164,10 @@ function loop(now){
         updateHUD();
       }
     });
+    g.corals.forEach(function(c){
+      if (Math.hypot(c.x-sh.x,c.y-sh.y) < eatR+16){ c.eaten = true; burst(c.x,c.y,"#FF8FA3"); startDuel(now); }
+    });
+    if (g.duel) updateDuel(g.duel, dt, now, t, eatR, turbo);
     // jellies and sea snakes share one hit test: {x,y,r,hit()} per hazard part
     var hazards = [];
     g.jellies.forEach(function(j){
@@ -1940,24 +2204,8 @@ function loop(now){
       for (var hj=0; hj<hazards.length; hj++){
         var hz2 = hazards[hj];
         if (!touching(hz2,0.8)) continue;
-        hz2.hit(); g.invulnUntil = now+1600; g.stungFlash = now+350; g.lastHit = hz2.kind;
-        Sound.sting();
-        if (hz2.kind==="snake") floaty(hz2.x,hz2.y-16,"Hiss! 🐍","#FFFFFF");
-        g.hearts -= 1; g.stingsThisZone += 1; g.totalStings += 1; g.combo = 0;
-        updateHUD();
-        if (g.hearts <= 0){
-          if (EDITION.loseProgressOnRest){ g.meter = 0; g.combo = 0; updateHUD(); }
-          $("restExitBtn").classList.toggle("hidden", !g.abyss);
-          var snakeHit = g.lastHit==="snake";
-          $("restTitle").textContent = snakeHit ? "Sea Snake Surprise!" : "Jellyfish Tangle!";
-          $("restWhy").textContent = snakeHit
-            ? "Sea snakes are shy, but their bite is very venomous — smart sharks give those black-and-white stripes plenty of room."
-            : "Even real sharks steer around jellyfish — those tentacles carry thousands of tiny stinging cells.";
-          $("restWhy").textContent += EDITION.loseProgressOnRest ? " This zone's hunt starts over — shake it off and try again." : " Shake it off and keep hunting. Your fish count is safe!";
-          var rf = BONUS_FACTS[Math.floor(Math.random()*BONUS_FACTS.length)];
-          $("restFact").innerHTML = "<b style=\"color:#7BE0AD\">" + rf.emoji + " While you rest — did you know?</b><br/>" + rf.text;
-          setScreen("rest");
-        }
+        hz2.hit();
+        hurtShark(hz2.kind, hz2.x, hz2.y, now);
         break;
       }
     }
@@ -1965,6 +2213,7 @@ function loop(now){
 
   /* draw */
   ctx.setTransform(dpr,0,0,dpr,0,0);
+  if (now < g.shakeUntil) ctx.translate((Math.random()-0.5)*10, (Math.random()-0.5)*10);
   var grad = ctx.createLinearGradient(0,0,0,H);
   grad.addColorStop(0,zone.sky[0]);
   grad.addColorStop(0.7,zone.sky[1]);
@@ -2027,6 +2276,8 @@ function loop(now){
   g.surprises.forEach(function(sp){ if (sp.type==="twins") drawTwins(ctx,sp,t); else drawChest(ctx,sp,t); });
   g.jellies.forEach(function(j){ drawJelly(ctx,j,t,deepZone); });
   g.snakes.forEach(function(sn){ drawSeaSnake(ctx,sn,t); });
+  g.corals.forEach(function(c){ drawCoral(ctx,c,t); });
+  if (g.duel) drawDolphin(ctx,g.duel,t,now);
 
   if (g.mode==="title" || g.mode==="play" || g.mode==="rest"){
     if (turbo){
@@ -2044,6 +2295,23 @@ function loop(now){
         ctx.beginPath();
         ctx.moveTo(sh.x + bdir*zone.len*0.5, sy2);
         ctx.lineTo(sh.x + bdir*(zone.len*0.5 + 26 + ((t*260+st2*30)%34)), sy2);
+        ctx.stroke();
+      }
+    }
+    if (frenzy && !turbo){
+      ctx.save();
+      ctx.globalAlpha = 0.3 + 0.15*Math.sin(t*16);
+      ctx.shadowColor = "#FF5A3C"; ctx.shadowBlur = 30;
+      ctx.fillStyle = "#FF6B4A";
+      ctx.beginPath(); ctx.ellipse(sh.x, sh.y, zone.len*0.62, zone.len*0.38, 0, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+      var fdir = sh.vx>=0 ? -1 : 1;
+      ctx.strokeStyle = "rgba(255,140,100,0.6)"; ctx.lineWidth = 2.5;
+      for (var fs=0; fs<3; fs++){
+        var fy = sh.y + (fs-1)*13;
+        ctx.beginPath();
+        ctx.moveTo(sh.x + fdir*zone.len*0.5, fy);
+        ctx.lineTo(sh.x + fdir*(zone.len*0.5 + 20 + ((t*240+fs*27)%30)), fy);
         ctx.stroke();
       }
     }
@@ -2078,11 +2346,13 @@ function loop(now){
     ctx.fillStyle = f.color;
     ctx.font = "800 20px 'Baloo 2', sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(f.txt, f.x, f.y);
+    var fw = ctx.measureText(f.txt).width;
+    ctx.fillText(f.txt, Math.max(fw/2+8, Math.min(W-fw/2-8, f.x)), f.y); // keep pop-up text on screen
   });
   ctx.globalAlpha = 1;
 
   if (now < g.stungFlash){ ctx.fillStyle = "rgba(255,90,90,0.18)"; ctx.fillRect(0,0,W,H); }
+  if (g.duel && playing) drawDuelBanner(ctx,g.duel,now);
 
   requestAnimationFrame(loop);
 }

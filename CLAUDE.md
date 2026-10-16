@@ -39,6 +39,7 @@ An educational, single-file HTML5 canvas shark game. It began as a gift for my n
 - Hazards:
   - Jellyfish.
   - **Banded sea krait**: a black-and-white sea snake my nephew asked for. It appears from zone 2, costs a heart on touch, gets bonked away by turbo or the shield, and letting one pass earns the "Snake Dodger" badge.
+- **Dolphin Duel** (a nephew request): glowing coral drifts down now and then. Eating it sends the shark into a **feeding frenzy** (faster, red aura, screen shake) and starts a timed duel with a **bottlenose dolphin**. The dolphin circles, shows "!" (its aim locks at that moment), then rams. A ram costs a heart through the shared `hurtShark()`, the same path jellyfish and snakes use, so the shield and turbo rules apply. A miss leaves the dolphin dizzy, and bumping it scores a hit. Winning gives +5 snacks and the "Dolphin Duelist" badge; time running out is a draw. Tuning is in EDITION: `coralGap`, `duelHits`, `duelSeconds`, `dolphinSpeed`. It's grounded in real behavior: dolphins ram sharks, and Red Sea bottlenose dolphins rub on corals.
 
 ## Family easter eggs (handle with care)
 - **Mochi and Boba** (my twin daughters Atisha and Sofia) appear as **magical seahorse sisters** who cast a protective Twin Shield bubble and swim away. They must **never** be eaten or harmed; this was an explicit design correction.

@@ -35,6 +35,7 @@ Answer quick quizzes between zones and collect science orbs packed with amazing 
 An endless dive with a new random shark every level. How deep can you go?
 
 ⭐ MORE TO DISCOVER
+• Dolphin Duels: gobble glowing coral, go into a feeding frenzy and face off with a bottlenose dolphin
 • Golden tuna turbo power-up
 • Badges and star ratings for every zone
 • Seahorse sisters who cast a protective bubble shield

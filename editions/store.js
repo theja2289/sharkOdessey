@@ -15,4 +15,8 @@ var EDITION = {
   snakeGap: 9000,
   fishSpeed: 1.2,
   loseProgressOnRest: true,
+  coralGap: 26000,
+  duelHits: 4,
+  duelSeconds: 24,
+  dolphinSpeed: 520,
 };

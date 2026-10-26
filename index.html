@@ -238,6 +238,12 @@ var EDITION = {
   duelHits: 3,                      // bumps on a dizzy dolphin needed to win the duel
   duelSeconds: 25,                  // duel time limit before it's a draw
   dolphinSpeed: 420,                // dolphin charge speed, px/s
+  squidFromZone: 7,                 // giant squid lurk from Twilight Canyon (zone 8) down; colossal squid in the last zone
+  squidGap: 24000,                  // ms between squid encounter chances
+  squidSeconds: 40,                 // squid showdown time limit
+  squidTelegraph: 850,              // ms the "!" shows before a tentacle strike
+  giantSquidHits: 3,                // nips on a tired giant squid needed to win
+  colossalSquidHits: 4,             // nips on a tired colossal squid needed to win
 };
 /* edition:end */
 var FISH_PER_ZONE = EDITION.defaultLength; // set by the Dive Length picker on the title screen
@@ -650,6 +656,12 @@ var BONUS_FACTS = [
   { title:"Atomic Birthday Math", emoji:"⚛️", text:"To check how old whale sharks get, scientists measured traces of old atom-bomb-test carbon in their vertebrae. Science detective work!" },
   { title:"Dragon Tongue Teeth", emoji:"🐉", text:"In the Middle Ages, people found fossil megalodon teeth and believed they were petrified dragon tongues!" },
   { title:"Rapids-Jumping Sharks", emoji:"🏞️", text:"Bull sharks reach Lake Nicaragua by leaping up river rapids — just like salmon." },
+  { title:"Dinner-Plate Eyes", emoji:"👁️", text:"Giant and colossal squid have the biggest eyes of any animal — about 27 cm across, as big as a dinner plate! They may help them spot hungry sperm whales coming in the dark." },
+  { title:"Hooks, Not Just Suckers", emoji:"🪝", text:"Colossal squid arms and tentacles carry swiveling, claw-like hooks — sperm whales have been found with scars from battling them." },
+  { title:"Squid on the Menu", emoji:"🦑", text:"Sleeper sharks — close cousins of the Greenland shark — are among the few animals that eat colossal squid. Scientists have found squid beaks in their stomachs!" },
+  { title:"Caught on Camera", emoji:"🎥", text:"Nobody filmed a live giant squid in the deep sea until 2012. The first video of a colossal squid in the wild came in 2025 — a baby only about 30 cm long!" },
+  { title:"Longer Than a Bus", emoji:"🚌", text:"The giant squid is the longest squid — with its two feeding tentacles stretched out it can reach about 12 metres, as long as a school bus." },
+  { title:"Heaviest Invertebrate", emoji:"⚖️", text:"The colossal squid is the heaviest animal without a backbone — one caught in 2007 weighed about 495 kg, as much as a grand piano!" },
   { title:"Dolphin Spa Day", emoji:"🪸", text:"Bottlenose dolphins in the Red Sea line up to rub against certain corals — scientists think the coral's slime may soothe their skin like medicine!" },
   { title:"Dolphins vs Sharks", emoji:"🐬", text:"Bottlenose dolphins can stand up to sharks — they team up and ram them with their strong snouts until the shark swims away." },
   { title:"Snake Snacks", emoji:"🐍", text:"Tiger sharks are one of the few animals that eat sea snakes — scientists have found them in tiger shark stomachs!" },
@@ -669,11 +681,15 @@ var BADGES = [
   { id:"turbo", name:"Turbo Shark", emoji:"🌀", desc:"Catch a golden tuna and go full speed" },
   { id:"quiz", name:"Quiz Whiz", emoji:"🧩", desc:"Answer 5 shark quiz questions correctly" },
   { id:"abyss5", name:"Abyss Diver", emoji:"🌌", desc:"Reach Level 5 in endless Abyss Mode" },
+  { id:"squid", name:"Tentacle Tamer", emoji:"🦑", desc:"Win a showdown with a giant squid" },
+  { id:"colossal", name:"Colossal Champion", emoji:"👁️", desc:"Beat the colossal squid in the deep" },
   { id:"dolphin", name:"Dolphin Duelist", emoji:"🐬", desc:"Win a Dolphin Duel" },
   { id:"snake", name:"Snake Dodger", emoji:"🐍", desc:"Let a black-and-white sea snake swim past without touching it" },
 ];
 
 var QUIZ = [
+  { q:"Which animal has the biggest eyes in the world?", opts:["Colossal squid","Blue whale","Great white shark"], ans:0 },
+  { q:"What do colossal squid have on their arms besides suckers?", opts:["Swiveling hooks","Tiny shells","Feathers"], ans:0 },
   { q:"How do bottlenose dolphins chase sharks away?", opts:["Ramming with their snouts","Squirting ink","Electric zaps"], ans:0 },
   { q:"Why does a sea snake swim up to the surface?", opts:["To breathe air","To sunbathe","To catch birds"], ans:0 },
   { q:"Which shark can WALK on its fins?", opts:["Epaulette shark","Great white","Shortfin mako"], ans:0 },
@@ -1199,6 +1215,7 @@ var g = {
   abyss:false, abyssLevel:0, bestAbyss:0, abyssSpec:null,
   snakes:[], lastSnake:0, snakeToastShown:false, lastHit:"jelly",
   corals:[], lastCoral:0, duel:null, duelToastShown:false, shakeUntil:0,
+  squid:null, lastSquid:0, squidToasts:{}, inks:[],
 };
 
 function resize(){
@@ -1610,6 +1627,7 @@ function startGame(){
   g.abyss = false; g.abyssLevel = 0;
   g.snakes = []; g.lastSnake = performance.now(); g.snakeToastShown = false;
   g.corals = []; g.duel = null; g.duelToastShown = false; g.lastCoral = performance.now() - EDITION.coralGap*0.4;
+  g.squid = null; g.squidToasts = {}; g.inks = []; g.lastSquid = performance.now() - EDITION.squidGap;
   updateHUD();
   showCard(0, null);
 }
@@ -1624,6 +1642,7 @@ $("abyssBtn").addEventListener("click", function(){
   g.fish = []; g.jellies = []; g.orbs = []; g.tunas = []; g.surprises = [];
   g.snakes = []; g.lastSnake = performance.now();
   g.corals = []; g.duel = null; g.lastCoral = performance.now() - EDITION.coralGap*0.4;
+  g.squid = null; g.inks = []; g.lastSquid = performance.now() - EDITION.squidGap*0.5;
   updateHUD();
   showToast("🌌 Abyss Mode!","Endless diving — a new random shark every level, and more jellyfish the deeper you go. How far can you get?",false);
   setScreen("play");
@@ -1714,6 +1733,8 @@ function snakePoints(sn,t){
 var HIT_TEXT = {
   jelly:   ["Jellyfish Tangle!", "Even real sharks steer around jellyfish — those tentacles carry thousands of tiny stinging cells."],
   snake:   ["Sea Snake Surprise!", "Sea snakes are shy, but their bite is very venomous — smart sharks give those black-and-white stripes plenty of room."],
+  squid:    ["Tentacle Trouble!", "A giant squid snatches prey with its two extra-long tentacles, tipped with clubs full of toothy suckers."],
+  colossal: ["Hooked!", "Colossal squid tentacles carry swiveling hooks — even sperm whales come away with scars."],
   dolphin: ["Dolphin Bonk!", "Bottlenose dolphins are tough — they ram sharks with their strong snouts, and the shark usually swims away to regroup."],
 };
 function hurtShark(kind, x, y, now){
@@ -1721,10 +1742,11 @@ function hurtShark(kind, x, y, now){
   Sound.sting();
   if (kind==="snake") floaty(x,y-16,"Hiss! 🐍","#FFFFFF");
   if (kind==="dolphin") floaty(x,y-16,"Rammed! 🐬","#CFE8F7");
+  if (kind==="squid" || kind==="colossal") floaty(x,y-16,"Grabbed! 🦑","#FFC2B8");
   g.hearts -= 1; g.stingsThisZone += 1; g.totalStings += 1; g.combo = 0;
   updateHUD();
   if (g.hearts > 0) return;
-  g.duel = null;
+  g.duel = null; g.squid = null;
   if (EDITION.loseProgressOnRest){ g.meter = 0; g.combo = 0; updateHUD(); }
   $("restExitBtn").classList.toggle("hidden", !g.abyss);
   var txt = HIT_TEXT[kind] || HIT_TEXT.jelly;
@@ -1733,6 +1755,277 @@ function hurtShark(kind, x, y, now){
   var rf = BONUS_FACTS[Math.floor(Math.random()*BONUS_FACTS.length)];
   $("restFact").innerHTML = "<b style=\"color:#7BE0AD\">" + rf.emoji + " While you rest — did you know?</b><br/>" + rf.text;
   setScreen("rest");
+}
+
+/* ---------- Giant & colossal squid showdowns ----------
+   The squid lurks near a side wall, eye on the shark. "!" → its aim locks → the two long
+   feeding tentacles shoot out (a grab costs a heart). Colossal squid strike twice in a row.
+   Then it's tired while it reels them in: nip its body to score. Win and it jets off in ink. */
+var SQUIDS = {
+  giant: { label:"🦑 GIANT SQUID", M:120, Wd:26, A:66, eyeR:9, body:"#C9584E", dark:"#8F3530",
+    reach:320, strikes:1, reward:5, meterBoost:2, badge:"squid", hurt:"squid",
+    hits: function(){ return EDITION.giantSquidHits; },
+    toast:["🦑 Giant Squid!","A real giant squid can stretch as long as a school bus, with eyes as big as dinner plates! It grabs prey with two extra-long tentacles — when you see “!”, swim away. After it strikes it's tired: nip its body to win!"] },
+  colossal: { label:"🦑 COLOSSAL SQUID", M:155, Wd:40, A:72, eyeR:16, body:"#8E2B3A", dark:"#5E1724",
+    reach:310, strikes:2, reward:8, meterBoost:3, badge:"colossal", hurt:"colossal", hooks:true, glowEye:true,
+    hits: function(){ return EDITION.colossalSquidHits; },
+    toast:["👁️ COLOSSAL Squid!","The heaviest invertebrate on Earth, with the biggest eyes of any animal — and hooks on its arms! Fun fact: sleeper sharks, the Greenland shark's cousins, really do eat colossal squid. It strikes TWICE in a row — dodge both, then nip it!"] },
+};
+function pickSquidKind(){
+  if (g.abyss) return (g.abyssLevel >= 2 && Math.random() < 0.5) ? "colossal" : "giant";
+  return g.zone === ZONES.length-1 ? "colossal" : "giant";
+}
+function startSquid(kind, now){
+  var sh = g.shark, c = SQUIDS[kind];
+  // tall phone screens: rise from below / drop from above, so the long body fits on screen
+  var vertical = H > W*1.15, side, x, y, ang;
+  if (vertical){
+    side = sh.y < H*0.4 ? 1 : -1;   // prefer dropping from above: the bottom has the meter and pop-ups
+    x = Math.max(80, Math.min(W-80, sh.x)); y = side > 0 ? H + c.M : -c.M; ang = side > 0 ? -Math.PI/2 : Math.PI/2;
+  } else {
+    side = sh.x < W/2 ? 1 : -1;
+    x = side > 0 ? W + c.M : -c.M; y = Math.max(130, Math.min(H-130, sh.y)); ang = side > 0 ? Math.PI : 0;
+  }
+  g.squid = { kind:kind, x:x, y:y, vx:0, vy:0, ang:ang, side:side, vertical:vertical,
+    phase:"enter", until: now+1600, hits:0, end: now+1600+EDITION.squidSeconds*1000,
+    strikes:0, aimX:0, aimY:0, strikeT0:0, reachLen:0, hitAt:0, grabbed:false };
+  Sound.dive();
+  floaty(sh.x, sh.y-50, kind==="colossal" ? "👁️ COLOSSAL SQUID!" : "🦑 GIANT SQUID!", "#FFC2B8");
+  if (!g.squidToasts[kind]){ g.squidToasts[kind] = true; showToast(c.toast[0], c.toast[1], false); }
+}
+function squidInk(x, y, big){
+  for (var i=0;i<(big?4:1);i++){
+    g.inks.push({ x: x + (Math.random()-0.5)*(big?60:10), y: y + (Math.random()-0.5)*(big?50:10),
+      r: big ? 40+Math.random()*30 : 18, grow: big ? 70 : 40, life: 1 });
+  }
+}
+// head position, facing direction and mantle hit test
+function squidDir(q){ return { x: Math.cos(q.ang), y: Math.sin(q.ang) }; }
+// where to show "!" / text: just past the arm tips on the shark's side (never hidden behind the HUD)
+function squidFront(q){ var c = SQUIDS[q.kind], d = squidDir(q), r = c.A*1.35 + 34; return { x: q.x + d.x*r, y: q.y + d.y*r }; }
+function squidBodyTouch(q, eatR){
+  var c = SQUIDS[q.kind], d = squidDir(q), sh = g.shark;
+  for (var k=0;k<=4;k++){ // head → most of the mantle
+    var px = q.x - d.x*c.M*0.8*k/4, py = q.y - d.y*c.M*0.8*k/4;
+    if (Math.hypot(px-sh.x, py-sh.y) < eatR*0.7 + c.Wd*0.75) return true;
+  }
+  return false;
+}
+function squidTentacleLen(q, now){
+  var tt = now - q.strikeT0;
+  if (q.phase!=="strike") return 0;
+  if (tt < 220) return q.reachLen * (1 - Math.pow(1 - tt/220, 2)); // whip out
+  if (tt < 380) return q.reachLen;                                  // grab
+  return q.reachLen * Math.max(0, 1 - (tt-380)/470);                // reel in
+}
+function squidNip(q, now){
+  var c = SQUIDS[q.kind], d = squidDir(q);
+  q.hits += 1; q.hitAt = now;
+  burst(q.x, q.y, "#FFC2B8"); Sound.eat();
+  squidInk(q.x - d.x*c.M*0.5, q.y - d.y*c.M*0.5, false);
+  q.x -= d.x*40; q.y -= d.y*30;   // flinches back
+  q.x = Math.max(-c.M*0.3, Math.min(W + c.M*0.3, q.x)); q.y = Math.max(100, Math.min(H-100, q.y));
+  if (q.hits >= c.hits()){
+    q.phase = "win"; q.until = now+2200;
+    squidInk(q.x, q.y, true);
+    Sound.badge();
+    g.score += c.reward; g.meter = Math.min(FISH_PER_ZONE-1, g.meter + c.meterBoost); updateHUD();
+    floaty(q.x, q.y-50, "🏆 YOU WIN! +" + c.reward, "#FFD166");
+    awardBadge(c.badge);
+    return;
+  }
+  floaty(q.x, q.y-40, "Nip! " + q.hits + "/" + c.hits(), "#FFD166");
+  if (q.phase==="tired") return;   // still tired: there's time for another nip
+  q.phase = "hover"; q.until = now+1300+Math.random()*600; q.strikes = 0;
+}
+function updateSquid(q, dt, now, t, eatR, turbo){
+  var c = SQUIDS[q.kind], sh = g.shark;
+  if (q.phase==="win" || q.phase==="leave"){
+    var d0 = squidDir(q);                 // squid jet away mantle-first
+    q.x -= d0.x*380*dt; q.y -= d0.y*380*dt;
+    if (now > q.until || q.x < -260 || q.x > W+260 || q.y < -260 || q.y > H+260) g.squid = null;
+    return;
+  }
+  if (now > q.end){
+    q.phase = "leave"; q.until = now+2500;
+    squidInk(q.x, q.y, true);
+    floaty(q.x, q.y-40, "Whoosh! Gone in a cloud of ink 💨", "#FFC2B8");
+    return;
+  }
+  // always turn to look at the shark, except mid-strike
+  if (q.phase!=="strike"){
+    var want = Math.atan2(sh.y-q.y, sh.x-q.x), diff = Math.atan2(Math.sin(want-q.ang), Math.cos(want-q.ang));
+    q.ang += diff*Math.min(1, dt*(q.phase==="telegraph" ? 8 : 3));
+  }
+  if (turbo && now-q.hitAt > 700 && squidBodyTouch(q, eatR)){ squidNip(q, now); return; }
+
+  if (q.phase==="enter" || q.phase==="hover"){
+    // stalk the shark from its own side, staying within tentacle range and mostly on screen
+    var dist = c.reach*0.7, tx, ty;
+    if (q.vertical){
+      var mY = Math.min(c.M*0.9, H*0.28);
+      tx = Math.max(80, Math.min(W-80, sh.x + Math.sin(t*0.7)*50));
+      ty = Math.max(mY, Math.min(H-mY-60, sh.y + q.side*dist));
+    } else {
+      var margin = Math.min(c.M*0.6, W*0.3);
+      tx = Math.max(margin, Math.min(W-margin, sh.x + q.side*dist));
+      ty = Math.max(110, Math.min(H-110, sh.y + Math.sin(t*0.7)*60));
+    }
+    q.vx += (tx-q.x)*2.2*dt; q.vy += (ty-q.y)*1.6*dt;
+    q.vx *= 0.9; q.vy *= 0.9;
+    q.x += q.vx*dt*4; q.y += q.vy*dt*4;
+    if (now > q.until){
+      q.phase = "telegraph"; q.until = now + EDITION.squidTelegraph*(q.kind==="colossal" ? 0.85 : 1);
+      q.aimX = sh.x; q.aimY = sh.y;  // aim locks when the "!" appears
+    }
+  } else if (q.phase==="telegraph"){
+    q.vx *= 0.85; q.vy *= 0.85;
+    if (now > q.until){
+      q.phase = "strike"; q.strikeT0 = now; q.grabbed = false;
+      q.ang = Math.atan2(q.aimY-q.y, q.aimX-q.x);
+      q.reachLen = Math.min(c.reach, Math.hypot(q.aimX-q.x, q.aimY-q.y) + 40);
+      Sound.dive();
+    }
+  } else if (q.phase==="strike"){
+    var len = squidTentacleLen(q, now), d = squidDir(q), tt = now - q.strikeT0;
+    if (tt < 380 && !q.grabbed && len > 30){
+      var hitT = false;
+      [1, 0.75, 0.5].forEach(function(f){
+        var px = q.x + d.x*(c.A*0.2 + len*f), py = q.y + d.y*(c.A*0.2 + len*f);
+        if (Math.hypot(px-sh.x, py-sh.y) < eatR*0.6 + 12) hitT = true;
+      });
+      if (hitT){
+        q.grabbed = true;
+        if (turbo){ floaty(sh.x, sh.y-30, "Bonk!", "#FFD166"); }
+        else if (now < g.shieldUntil){
+          g.shieldUntil = 0; burst(sh.x, sh.y, "#FF9EC4"); Sound.eat();
+          floaty(sh.x, sh.y-40, "🛡️ Twin Shield!", "#FF9EC4");
+        } else if (now > g.invulnUntil){
+          hurtShark(c.hurt, sh.x, sh.y, now);
+          if (!g.squid) return; // out of hearts
+        }
+      }
+    }
+    if (tt > 850){
+      q.strikes += 1;
+      if (q.strikes < c.strikes){
+        q.phase = "telegraph"; q.until = now + EDITION.squidTelegraph*0.7;
+        q.aimX = sh.x; q.aimY = sh.y;
+      } else {
+        q.phase = "tired"; q.until = now+1800; q.strikes = 0;
+        var fr = squidFront(q);
+        floaty(fr.x, fr.y+18, "Tired! Nip it! 💦", "#FFC2B8");
+      }
+    }
+  } else if (q.phase==="tired"){
+    q.y += 10*dt;
+    if (q.vertical) q.y += (H/2 - q.y)*0.35*dt; else q.x += (W/2 - q.x)*0.35*dt;   // drifts into view while it rests
+    if (now-q.hitAt > 700 && squidBodyTouch(q, eatR)){ squidNip(q, now); return; }
+    if (now > q.until){ q.phase = "hover"; q.until = now+1000+Math.random()*700; }
+  }
+}
+function drawSquid(ctx,q,t,now){
+  var c = SQUIDS[q.kind], M = c.M, Wd = c.Wd, A = c.A;
+  var len = squidTentacleLen(q, now);
+  ctx.save();
+  ctx.translate(q.x, q.y + (q.phase==="tired" ? Math.sin(t*3)*2 : 0));
+  if (q.phase==="telegraph") ctx.translate(Math.sin(t*50)*1.5, 0);
+  ctx.rotate(q.ang);
+  if (now-q.hitAt < 300) ctx.globalAlpha = 0.55;
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  var limp = q.phase==="tired" ? 0.4 : 1;
+  // two long feeding tentacles (behind the arms)
+  for (var s2=-1; s2<=1; s2+=2){
+    ctx.strokeStyle = c.dark; ctx.lineWidth = q.kind==="colossal" ? 4 : 3;
+    ctx.beginPath(); ctx.moveTo(A*0.2, s2*3);
+    var tipX, tipY;
+    if (q.phase==="strike"){
+      tipX = A*0.2 + len; tipY = s2*Math.max(2, 10*(1-len/c.reach));
+      ctx.lineTo(tipX, tipY);
+    } else {
+      tipX = A*1.35; tipY = s2*(10 + Math.sin(t*2.2 + s2)*6*limp) + (q.phase==="tired" ? 14 : 0);
+      ctx.quadraticCurveTo(A*0.8, s2*14 + Math.sin(t*2.6+s2)*8*limp, tipX, tipY);
+    }
+    ctx.stroke();
+    // club with suckers (glows during the "!")
+    ctx.save();
+    if (q.phase==="telegraph"){ ctx.shadowColor = "#FFE08A"; ctx.shadowBlur = 16; }
+    ctx.fillStyle = c.body;
+    ctx.beginPath(); ctx.ellipse(tipX, tipY, 9, 4.5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = c.hooks ? "#F4F0E8" : "#F2C9C2";
+    for (var sk=-1; sk<=1; sk++){ ctx.beginPath(); ctx.arc(tipX+sk*4, tipY, 1.2, 0, Math.PI*2); ctx.fill(); }
+    ctx.restore();
+  }
+  // eight arms
+  for (var i=0;i<8;i++){
+    var y0 = (i-3.5)*Wd*0.1, spread = (i-3.5)*3.2;
+    var w1 = Math.sin(t*3 + i)*4*limp, w2 = Math.sin(t*3.4 + i*1.7)*6*limp;
+    ctx.strokeStyle = i%2 ? c.body : c.dark; ctx.lineWidth = q.kind==="colossal" ? 4.5 : 3.5;
+    ctx.beginPath(); ctx.moveTo(Wd*0.4, y0);
+    ctx.quadraticCurveTo(A*0.55, y0 + spread + w1, A, y0 + spread*1.8 + w2 + (q.phase==="tired" ? 8 : 0));
+    ctx.stroke();
+    if (c.hooks){ // little swiveling hooks
+      ctx.strokeStyle = "rgba(244,240,232,0.85)"; ctx.lineWidth = 1;
+      for (var h=1; h<=3; h++){
+        var hx = Wd*0.4 + (A-Wd*0.4)*h/4, hy = y0 + (spread + w1)*h/3;
+        ctx.beginPath(); ctx.arc(hx, hy, 1.8, 0.5, Math.PI*1.4); ctx.stroke();
+      }
+    }
+  }
+  // mantle with fins at the tip
+  var gr = ctx.createLinearGradient(0,-Wd*0.6,0,Wd*0.6);
+  gr.addColorStop(0, c.dark); gr.addColorStop(0.5, c.body); gr.addColorStop(1, c.dark);
+  ctx.fillStyle = c.dark;
+  var finFlap = Math.sin(t*4)*Wd*0.12;
+  ctx.beginPath();
+  ctx.moveTo(-M*0.72, 0); ctx.lineTo(-M*0.9, -Wd*0.95 - finFlap); ctx.lineTo(-M*1.04, 0); ctx.lineTo(-M*0.9, Wd*0.95 + finFlap);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = gr;
+  ctx.beginPath();
+  ctx.moveTo(Wd*0.1, -Wd*0.5);
+  ctx.quadraticCurveTo(-M*0.55, -Wd*0.62, -M, 0);
+  ctx.quadraticCurveTo(-M*0.55, Wd*0.62, Wd*0.1, Wd*0.5);
+  ctx.closePath(); ctx.fill();
+  // spots (squid skin cells that change colour)
+  ctx.fillStyle = "rgba(60,10,15,0.35)";
+  for (var sp=0; sp<6; sp++){ ctx.beginPath(); ctx.arc(-M*(0.15+sp*0.12), Math.sin(sp*2.3)*Wd*0.25, 1.6+sp%2, 0, Math.PI*2); ctx.fill(); }
+  // head + the famous enormous eye
+  ctx.fillStyle = c.body;
+  ctx.beginPath(); ctx.ellipse(Wd*0.25, 0, Wd*0.55, Wd*0.48, 0, 0, Math.PI*2); ctx.fill();
+  ctx.save();
+  if (c.glowEye){ ctx.shadowColor = "#7FE8FF"; ctx.shadowBlur = 14 + Math.sin(t*3)*5; }
+  ctx.fillStyle = c.glowEye ? "#CFF6FF" : "#F3E9DA";
+  ctx.beginPath(); ctx.arc(Wd*0.2, -Wd*0.12, c.eyeR, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = "#101820";
+  ctx.beginPath(); ctx.arc(Wd*0.2 + c.eyeR*0.25, -Wd*0.12, c.eyeR*0.55, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = "#FFFFFF";
+  ctx.beginPath(); ctx.arc(Wd*0.2 + c.eyeR*0.4, -Wd*0.12 - c.eyeR*0.25, c.eyeR*0.18, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+  ctx.globalAlpha = 1;
+  // markers, unrotated
+  ctx.save(); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  if (q.phase==="telegraph"){
+    ctx.setLineDash([6,8]); ctx.strokeStyle = "rgba(255,224,138,0.45)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(q.x, q.y); ctx.lineTo(q.aimX, q.aimY); ctx.stroke(); ctx.setLineDash([]);
+    var fr = squidFront(q);
+    ctx.fillStyle = "#FFD166"; ctx.font = "800 30px 'Baloo 2', sans-serif";
+    ctx.fillText("!", fr.x, fr.y + Math.sin(t*20)*2);
+  } else if (q.phase==="tired"){
+    var fr2 = squidFront(q);
+    ctx.font = "15px sans-serif"; ctx.fillText("💦", fr2.x, fr2.y + Math.sin(t*4)*3);
+  }
+  ctx.restore();
+}
+function drawInk(ctx,k){
+  var a = Math.max(0, k.life);
+  var gr = ctx.createRadialGradient(k.x, k.y, 0, k.x, k.y, k.r);
+  gr.addColorStop(0, "rgba(8,8,16," + (0.85*a) + ")");
+  gr.addColorStop(0.6, "rgba(12,10,22," + (0.55*a) + ")");
+  gr.addColorStop(1, "rgba(12,10,22,0)");
+  ctx.fillStyle = gr;
+  ctx.beginPath(); ctx.arc(k.x, k.y, k.r, 0, Math.PI*2); ctx.fill();
 }
 
 /* ---------- Dolphin Duel ----------
@@ -1911,18 +2204,21 @@ function drawDolphin(ctx,d,t,now){
   ctx.restore();
 }
 function drawDuelBanner(ctx,d,now){
-  var secs = Math.max(0, Math.ceil((d.end-now)/1000));
-  var txt = "🐬 DOLPHIN DUEL  ";
-  for (var i=0;i<EDITION.duelHits;i++) txt += i < d.hits ? "●" : "○";
-  if (d.phase!=="win" && d.phase!=="leave") txt += "  " + secs + "s";
+  drawEncounterBanner(ctx, "🐬 DOLPHIN DUEL", d.hits, EDITION.duelHits, d.end, now, d.phase==="win" || d.phase==="leave", "#CFE8F7");
+}
+function drawEncounterBanner(ctx,label,hits,need,end,now,done,color){
+  var secs = Math.max(0, Math.ceil((end-now)/1000));
+  var txt = label + "  ";
+  for (var i=0;i<need;i++) txt += i < hits ? "●" : "○";
+  if (!done) txt += "  " + secs + "s";
   ctx.save();
   ctx.font = "800 15px 'Baloo 2', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
   var w = ctx.measureText(txt).width + 28, x = W/2, y = H - 78;
-  ctx.fillStyle = "rgba(4,20,36,0.78)"; ctx.strokeStyle = "rgba(207,232,247,0.6)"; ctx.lineWidth = 1.5;
+  ctx.fillStyle = "rgba(4,20,36,0.78)"; ctx.strokeStyle = color; ctx.lineWidth = 1.5;
   ctx.beginPath();
   if (ctx.roundRect) ctx.roundRect(x-w/2, y-15, w, 30, 15); else ctx.rect(x-w/2, y-15, w, 30);
   ctx.fill(); ctx.stroke();
-  ctx.fillStyle = "#CFE8F7"; ctx.fillText(txt, x, y+1);
+  ctx.fillStyle = color; ctx.fillText(txt, x, y+1);
   ctx.restore();
 }
 function drawCoral(ctx,c,t){
@@ -2002,7 +2298,7 @@ function loop(now){
     var foodGap = zone.food==="plankton" ? 1000 : 800;
     if (now-g.lastFish > foodGap && g.fish.length < 7){ spawnFood(zone); g.lastFish = now; }
     var jellyCap = g.abyss ? Math.min(6, 2+Math.floor(g.abyssLevel/2)) : EDITION.jellyCaps[g.zone];
-    if (now-g.lastJelly > EDITION.jellyGap && g.jellies.length < jellyCap && !g.duel){ spawnJelly(); g.lastJelly = now; }
+    if (now-g.lastJelly > EDITION.jellyGap && g.jellies.length < jellyCap && !g.duel && !g.squid){ spawnJelly(); g.lastJelly = now; }
     if (now-g.lastOrb > 6500 && g.orbs.length < 1 && Math.random() < 0.75){ spawnOrb(); g.lastOrb = now; }
     if (now-g.lastTuna > 16000 && g.tunas.length===0 && !turbo && Math.random() < 0.55){
       var fromL = Math.random() < 0.5;
@@ -2022,12 +2318,16 @@ function loop(now){
       g.lastSurprise = now;
     }
     // glowing coral — eating it starts a Dolphin Duel
-    if (!g.duel && g.corals.length===0 && now-g.lastCoral > EDITION.coralGap && Math.random() < 0.6){
+    if (!g.duel && !g.squid && g.corals.length===0 && now-g.lastCoral > EDITION.coralGap && Math.random() < 0.6){
       g.corals.push({ x: 60+Math.random()*(W-120), y: -30, s: 18, seed: Math.random()*9 });
       g.lastCoral = now;
     }
+    // giant squid lurk in the deep zones; the colossal squid guards the last one
+    if (!g.duel && !g.squid && (g.abyss || g.zone >= EDITION.squidFromZone) && now-g.lastSquid > EDITION.squidGap && Math.random() < 0.6){
+      startSquid(pickSquidKind(), now); g.lastSquid = now;
+    }
     // banded sea krait — a black-and-white sea snake that slithers across from zone 2 on
-    if ((g.zone >= 1 || g.abyss) && now-g.lastSnake > EDITION.snakeGap && !g.duel && g.snakes.length===0 && Math.random() < 0.6){
+    if ((g.zone >= 1 || g.abyss) && now-g.lastSnake > EDITION.snakeGap && !g.duel && !g.squid && g.snakes.length===0 && Math.random() < 0.6){
       spawnSnake(); g.lastSnake = now;
       if (!g.snakeToastShown){
         g.snakeToastShown = true;
@@ -2043,6 +2343,8 @@ function loop(now){
   g.orbs.forEach(function(o){ o.y += o.s*dt; });
   g.orbs = g.orbs.filter(function(o){ return o.y < H+40 && !o.gone; });
   g.corals.forEach(function(c){ c.y += c.s*dt; });
+  g.inks.forEach(function(k){ k.r += k.grow*dt; k.life -= dt*0.4; });
+  g.inks = g.inks.filter(function(k){ return k.life > 0; });
   g.corals = g.corals.filter(function(c){ return c.y < H+40 && !c.eaten; });
   g.surprises.forEach(function(sp){
     if (sp.type==="twins"){
@@ -2091,7 +2393,7 @@ function loop(now){
           if (g.stingsThisZone===0) awardBadge("untouch");
           if (g.zone===0) awardBadge("first");
           if (g.zone===4) awardBadge("half");
-          g.meter = 0; g.fish = []; g.jellies = []; g.orbs = []; g.snakes = []; g.corals = []; g.duel = null;
+          g.meter = 0; g.fish = []; g.jellies = []; g.orbs = []; g.snakes = []; g.corals = []; g.duel = null; g.squid = null; g.inks = [];
           if (g.abyss){
             g.abyssLevel += 1;
             if (g.abyssLevel > g.bestAbyss) g.bestAbyss = g.abyssLevel;
@@ -2168,6 +2470,7 @@ function loop(now){
       if (Math.hypot(c.x-sh.x,c.y-sh.y) < eatR+16){ c.eaten = true; burst(c.x,c.y,"#FF8FA3"); startDuel(now); }
     });
     if (g.duel) updateDuel(g.duel, dt, now, t, eatR, turbo);
+    if (g.squid) updateSquid(g.squid, dt, now, t, eatR, turbo);
     // jellies and sea snakes share one hit test: {x,y,r,hit()} per hazard part
     var hazards = [];
     g.jellies.forEach(function(j){
@@ -2278,6 +2581,7 @@ function loop(now){
   g.snakes.forEach(function(sn){ drawSeaSnake(ctx,sn,t); });
   g.corals.forEach(function(c){ drawCoral(ctx,c,t); });
   if (g.duel) drawDolphin(ctx,g.duel,t,now);
+  if (g.squid) drawSquid(ctx,g.squid,t,now);
 
   if (g.mode==="title" || g.mode==="play" || g.mode==="rest"){
     if (turbo){
@@ -2352,7 +2656,9 @@ function loop(now){
   ctx.globalAlpha = 1;
 
   if (now < g.stungFlash){ ctx.fillStyle = "rgba(255,90,90,0.18)"; ctx.fillRect(0,0,W,H); }
+  g.inks.forEach(function(k){ drawInk(ctx,k); });
   if (g.duel && playing) drawDuelBanner(ctx,g.duel,now);
+  if (g.squid && playing) drawEncounterBanner(ctx, SQUIDS[g.squid.kind].label, g.squid.hits, SQUIDS[g.squid.kind].hits(), g.squid.end, now, g.squid.phase==="win" || g.squid.phase==="leave", "#FFC2B8");
 
   requestAnimationFrame(loop);
 }

@@ -19,4 +19,10 @@ var EDITION = {
   duelHits: 4,
   duelSeconds: 24,
   dolphinSpeed: 520,
+  squidFromZone: 7,
+  squidGap: 20000,
+  squidSeconds: 40,
+  squidTelegraph: 650,
+  giantSquidHits: 4,
+  colossalSquidHits: 5,
 };

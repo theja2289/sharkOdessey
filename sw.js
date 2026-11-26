@@ -1,6 +1,6 @@
 // Offline support for the web (GitHub Pages) version.
 // Pages: network first so updates show up right away; everything else: cache, refreshed in the background.
-var CACHE = "shark-odyssey-v1";
+var CACHE = "shark-odyssey-v2";
 var CORE = ["./", "index.html", "manifest.json", "icon-192.png", "icon-512.png"];
 // three.js and the Google fonts are safe to keep offline; Wikipedia photos are not cached
 var CACHEABLE_HOSTS = ["cdnjs.cloudflare.com", "fonts.googleapis.com", "fonts.gstatic.com"];

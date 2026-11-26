@@ -55,6 +55,9 @@
   #toast p{margin:0;font-size:12.5px;line-height:1.45;}
   #toast.badge{border-color:#FFD166;background:linear-gradient(175deg,#3A2E0B,#241C06);}
   #toast.badge b{color:#FFD166;}
+  #ocean{position:absolute;inset:0;width:100%;height:100%;display:none;}
+  #cv{position:relative;z-index:1;}
+  #lookBtn{position:absolute;top:calc(52px + env(safe-area-inset-top));right:12px;background:rgba(4,20,36,.72);border:1.5px solid rgba(53,224,200,.35);border-radius:999px;width:40px;height:40px;font-size:16px;cursor:pointer;color:#DFF7F2;z-index:5;}
   #mute{position:absolute;top:calc(6px + env(safe-area-inset-top));right:12px;background:rgba(4,20,36,.72);border:1.5px solid rgba(53,224,200,.35);border-radius:999px;width:40px;height:40px;font-size:16px;cursor:pointer;color:#DFF7F2;z-index:5;}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:left;margin-bottom:13px;}
   .mini{background:rgba(53,224,200,.08);border:1px solid rgba(53,224,200,.28);border-radius:12px;padding:9px;}
@@ -92,6 +95,7 @@
   <div id="meterLabel"></div>
 </div>
 <button id="mute" aria-label="Toggle sound">🔊</button>
+<button id="lookBtn" aria-label="Switch between cartoon and realistic look">🌊</button>
 <div id="toast" class="hidden"><b id="toastTitle"></b><p id="toastText"></p></div>
 
 <div class="overlay" id="titleScr" style="background:rgba(2,10,20,.25)">
@@ -108,8 +112,26 @@
         <button class="tab lenBtn"></button>
       </div>
     </div>
+    <div style="margin-bottom:16px">
+      <div class="eyebrow" style="margin-bottom:7px">Ocean look</div>
+      <div class="tabs" style="margin-bottom:0">
+        <button class="tab lookTab" data-look="cartoon">🎨 Cartoon</button>
+        <button class="tab lookTab" data-look="realistic">🌊 Realistic</button>
+      </div>
+      <div id="lookNote" class="hidden" style="font-size:12px;color:#8FD8CC;margin-top:6px">Realistic needs WebGL, which this device can't run.</div>
+      <div id="qualRow" style="margin-top:10px">
+        <div class="eyebrow" style="margin-bottom:7px">Detail</div>
+        <div class="tabs" style="margin-bottom:0">
+          <button class="tab qualTab" data-q="auto">Auto</button>
+          <button class="tab qualTab" data-q="low">Low</button>
+          <button class="tab qualTab" data-q="medium">Medium</button>
+          <button class="tab qualTab" data-q="high">High</button>
+        </div>
+      </div>
+    </div>
     <div class="btnRow">
       <button class="btn" id="startBtn">🦈 Dive In</button>
+      <button class="btn ghost" id="exploreBtn">🧭 Explore the ocean</button>
       <button class="btn ghost" id="compareBtn">📊 Shark Lab</button>
       <button class="btn ghost" id="dexBtn">📖 Sharkpedia · 58</button>
     </div>
@@ -215,6 +237,2067 @@
   </div>
 </div>
 
+<script>
+/* ===== Realistic look (Cartoon / Realistic switch) =====
+   A real 3D underwater scene (three.js r128, already loaded by the game) drawn behind the
+   game canvas. The player shark and the prey fish become lit 3D models; the other sprites
+   stay 2D and get the water's light and colour laid over them.
+
+   Light model and look adapted from Abyssal Garden (MIT, (c) 2026 Maksymilian Dendura):
+   - per-channel extinction and in-scattering (fogIn), with its SIG / KD / WCOL / SUNC constants
+   - sunlight absorbed with depth, so red goes first, then green
+   - an animated caustic texture projected along the sun onto every upward-facing surface
+   - light shafts ray-marched through that caustic pattern
+   - the surface seen from below: Snell's window, reflected water outside it
+   - ACES tone map, vignette and dither
+   Rewritten for WebGL 1 so it runs on iPhone Safari. If three.js or WebGL is missing, or the
+   GPU drops the context, the game falls back to Cartoon.
+
+   Abyssal Garden: https://github.com/Noniv/abyssal-garden
+   Its licence, which applies to the parts adapted from it:
+
+   MIT License
+
+   Copyright (c) 2026 Maksymilian Dendura
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+*/
+var Realism = (function(){
+  var KEY = "sharkOdyssey.look";
+  var look = "realistic";
+  try { var saved = localStorage.getItem(KEY); if (saved === "cartoon" || saved === "realistic") look = saved; } catch(e){}
+
+  var SIG = [0.058*0.75, 0.0235*0.75, 0.0195*0.75];
+  var KD = [0.056, 0.0245, 0.017];
+  var WCOL = [0.16, 0.58, 0.90];
+  var SUNC = [1.7, 1.6, 1.45];
+  var EXPO = 0.62;
+  var VIEW_H = 13, CAM_D = 16;                         // the game plane (z = 0) shows 13 m top to bottom
+  var CAMY = [-7, -12, -18, -27, -45, -70, -100, -140, -180, -220]; // camera depth per zone, metres
+  function v3(a){ return "vec3(" + a.map(function(x){ return x.toFixed(5); }).join(",") + ")"; }
+
+  /* ---------- GLSL shared by every material ---------- */
+  var UW_DECL = [
+    "uniform float uT; uniform vec3 uSun; uniform sampler2D uCaus; uniform float uExpo; uniform float uRays; uniform vec2 uRes;",
+    "varying vec3 uwPos; varying vec3 uwN;",
+    "const vec3 SIG=" + v3(SIG) + "; const vec3 KD=" + v3(KD) + "; const vec3 WCOL=" + v3(WCOL) + "; const vec3 SUNC=" + v3(SUNC) + ";",
+    "const vec3 AMBW=vec3(.004,.011,.024);",
+    "float ign(vec2 p){return fract(52.9829189*fract(dot(p,vec2(.06711056,.00583715))));}",
+    "uniform float uHdr;uniform sampler2D uShadow;uniform mat4 uShadowM;uniform float uShadowOn,uShTaps,uShR;",
+    "float shU(vec4 v){return dot(v,vec4(255./256.)/vec4(16777216.,65536.,256.,1.));}",
+    "vec3 shC(vec3 p){return (uShadowM*vec4(p,1.)).xyz*.5+.5;}",
+    "float shIn(vec3 c){vec2 e=smoothstep(0.,.08,c.xy)*smoothstep(1.,.92,c.xy);return e.x*e.y*step(c.z,1.);}",
+    "float shHard(vec3 p){if(uShadowOn<.5)return 1.;vec3 c=shC(p);return 1.-shIn(c)*(1.-step(c.z-.0006,shU(texture2D(uShadow,c.xy))));}",
+    "float shadowAt(vec3 p){if(uShadowOn<.5)return 1.;vec3 c=shC(p);float w=shIn(c);if(w<=0.)return 1.;",
+    " float a=ign(gl_FragCoord.xy)*6.2832,acc=0.,n=0.;",
+    " for(int i=0;i<8;i++){if(float(i)>=uShTaps)break;float r=sqrt((float(i)+.5)/uShTaps)*uShR;float b=a+float(i)*2.39996;",
+    "  acc+=step(c.z-.0006,shU(texture2D(uShadow,c.xy+vec2(cos(b),sin(b))*r)));n+=1.;}",
+    " return mix(1.,acc/max(n,1.),w);}",
+    "vec3 fogIn(vec3 ro,vec3 rd,float d){vec3 a=max(SIG-KD*rd.y,vec3(2e-4));vec3 I=(1.-exp(-a*d))/a;",
+    " float mu=max(dot(rd,uSun),0.);float m2=mu*mu;return WCOL*SIG*exp(KD*min(ro.y,0.))*I*(1.22+.3*m2*m2)+AMBW*(1.-exp(-SIG*d));}",
+    "vec3 shafts(vec3 ro,vec3 rd,float t0,float t1,float j){if(uRays<.001)return vec3(0.);float dt=(t1-t0)/5.;vec3 acc=vec3(0.);",
+    " for(int n=0;n<5;n++){float t=t0+(float(n)+j)*dt;vec3 p=ro+rd*t;vec2 q=p.xz-uSun.xz*(p.y/uSun.y);",
+    "  float pat=smoothstep(.3,.7,texture2D(uCaus,q/27.,3.).r)*smoothstep(.15,.6,texture2D(uCaus,q.yx/11.+.3,2.5).r);",
+    "  acc+=exp(-SIG*t+KD*(min(p.y,0.)/uSun.y))*(.012+pat*6.)*shHard(p);}",
+    " float mu=max(dot(rd,uSun),0.);return acc*dt*SIG*(WCOL+vec3(.04,.07,.05))*SUNC*(.2+2.*mu*mu*mu)*uRays;}",
+    "vec3 tmap(vec3 x){return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.,1.);}",
+    "vec3 finish(vec3 c){c*=uExpo;if(uHdr>.5)return c;vec2 q=gl_FragCoord.xy/uRes-.5;c*=1.-dot(q,q)*.55;c=tmap(c);",
+    " float l0=dot(c,vec3(.2126,.7152,.0722));float l=mix(l0,l0*l0*(3.-2.*l0),.55);c*=l/max(l0,1e-4);",   // Abyssal Garden's grade: contrast,
+    " c=mix(c,vec3(l),smoothstep(.55,1.,l)*.1);c=mix(vec3(l),c,.93)+vec3(.008,.002,0.);",                  // soft highlights, a touch less saturation
+    " return pow(max(c,vec3(0.)),vec3(.4545))+(ign(gl_FragCoord.xy)-.5)/255.;}"
+  ].join("\n");
+
+  /* ---------- small helpers ---------- */
+  function h1(n){ var s = Math.sin(n*127.1)*43758.5453; return s - Math.floor(s); }
+  function vn2(x, y){
+    var ix = Math.floor(x), iy = Math.floor(y), fx = x-ix, fy = y-iy;
+    fx = fx*fx*(3-2*fx); fy = fy*fy*(3-2*fy);
+    function r(a,b){ return h1(a*57.0 + b*113.0); }
+    return (r(ix,iy)*(1-fx) + r(ix+1,iy)*fx)*(1-fy) + (r(ix,iy+1)*(1-fx) + r(ix+1,iy+1)*fx)*fy;
+  }
+  function fbm2(x, y){ return vn2(x,y)*0.5 + vn2(x*2.03+5.2,y*2.03+1.3)*0.25 + vn2(x*4.1+2.7,y*4.1+8.1)*0.125; }
+  function bedH(x, z){
+    var back = Math.max(0, (-z - 45)/55);
+    return fbm2(x*0.05, z*0.05)*4 + fbm2(x*0.18+7, z*0.18)*0.9 + back*back*16*fbm2(x*0.025+3, z*0.025+9) - 2;
+  }
+  function rnd(seed){ var s = seed; return function(){ s = (s*16807) % 2147483647; return (s-1)/2147483646; }; }
+  function merge(geos){
+    var pos = [], nor = [];
+    geos.forEach(function(g){
+      g = g.index ? g.toNonIndexed() : g;
+      Array.prototype.push.apply(pos, g.attributes.position.array);
+      Array.prototype.push.apply(nor, g.attributes.normal.array);
+    });
+    var m = new THREE.BufferGeometry();
+    m.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    m.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+    return m;
+  }
+
+  var ok = false, failed = false, R = null;
+  var U = null; // shared uniforms
+  var ema = 16.7, slow = 0;
+
+  /* every lit material gets the water: depth light, caustics, shafts, haze, tone map */
+  function patchMat(mat, opts){
+    opts = opts || {};
+    if (mat.userData.uw) return mat;
+    mat.userData.uw = true;
+    if (mat.color) mat.color.convertSRGBToLinear();
+    if (mat.map) mat.map.encoding = THREE.sRGBEncoding;
+    var key = "uw|" + (opts.phase ? 1 : 0) + "|" + (opts.bend || "") + "|" + (opts.caus === undefined ? 0.55 : opts.caus);
+    mat.customProgramCacheKey = function(){ return key; };
+    mat.onBeforeCompile = function(sh){
+      sh.uniforms.uT = U.uT; sh.uniforms.uSun = U.uSun; sh.uniforms.uCaus = U.uCaus; sh.uniforms.uExpo = U.uExpo;
+      sh.uniforms.uRays = U.uRays; sh.uniforms.uRes = U.uRes;
+      ["uHdr","uShadow","uShadowM","uShadowOn","uShTaps","uShR"].forEach(function(k){ sh.uniforms[k] = U[k]; });
+      var vdecl = "varying vec3 uwPos; varying vec3 uwN; uniform float uT;\n" + (opts.phase ? "attribute float aPhase;\n" : "");
+      sh.vertexShader = vdecl + sh.vertexShader
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\n" + (opts.bend || ""))
+        .replace("#include <project_vertex>", [
+          "#include <project_vertex>",
+          "vec4 uw4=vec4(transformed,1.);vec3 uwn=objectNormal;",
+          "#ifdef USE_INSTANCING",
+          "uw4=instanceMatrix*uw4;uwn=mat3(instanceMatrix)*uwn;",
+          "#endif",
+          "uwPos=(modelMatrix*uw4).xyz;uwN=normalize(mat3(modelMatrix)*uwn);"
+        ].join("\n"));
+      sh.fragmentShader = UW_DECL + "\n" + sh.fragmentShader
+        .replace("#include <fog_fragment>", [
+          "{vec3 c=gl_FragColor.rgb;",
+          " vec3 V=uwPos-cameraPosition;float d=length(V);vec3 rd=V/d;",
+          " c*=min(exp(KD*(uwPos.y-cameraPosition.y)),vec3(2.));",               // light falls off below the camera, rises above it
+          " vec2 q=uwPos.xz-uSun.xz*(uwPos.y/uSun.y);vec2 o=vec2(.004,.0025);",   // caustics projected along the sun
+          " vec3 ca=vec3(texture2D(uCaus,q/3.3+o).r,texture2D(uCaus,q/3.3).r,texture2D(uCaus,q/3.3-o).r);",
+          " float cb=texture2D(uCaus,q.yx/6.9+.37).r;",
+          " vec3 cc=min(pow(ca,vec3(2.3))*5.*(.45+cb*1.3),vec3(4.));",
+          " c+=diffuseColor.rgb*SUNC*exp(KD*min(uwPos.y,0.))*cc*max(uwN.y,0.)*" + (opts.caus === undefined ? "0.55" : opts.caus.toFixed(2)) + ";",
+          " c=c*exp(-SIG*d)+fogIn(cameraPosition,rd,d)+shafts(cameraPosition,rd,1.,min(d,60.),ign(gl_FragCoord.xy));",
+          " gl_FragColor.rgb=finish(c);}"
+        ].join("\n"));
+    };
+    return mat;
+  }
+
+  function shaderMat(vs, fs, extra){
+    var uniforms = { uT:U.uT, uSun:U.uSun, uCaus:U.uCaus, uExpo:U.uExpo, uRays:U.uRays, uRes:U.uRes, uTanH:U.uTanH, uAsp:U.uAsp, uBio:U.uBio, uSnow:U.uSnow, uBox:U.uBox, uBoxOff:U.uBoxOff, uCamRot:U.uCamRot,
+      uHdr:U.uHdr, uShadow:U.uShadow, uShadowM:U.uShadowM, uShadowOn:U.uShadowOn, uShTaps:U.uShTaps, uShR:U.uShR };
+    return new THREE.ShaderMaterial(Object.assign({ uniforms:uniforms, vertexShader:vs, fragmentShader:UW_DECL + "\n" + fs }, extra || {}));
+  }
+
+  /* water that every scene shares: the backdrop, the surface seen from below, marine snow, bioluminescence */
+  function waterBits(scene){
+    // water behind everything: in-scattered light plus far shafts
+    var quadVS = "void main(){gl_Position=vec4(position.xy,.9999,1.);}";
+    var bg = new THREE.Mesh(new THREE.PlaneGeometry(2,2), shaderMat(quadVS, [
+      "uniform float uTanH,uAsp;uniform mat3 uCamRot;",
+      "void main(){vec2 nd=gl_FragCoord.xy/uRes*2.-1.;vec3 rd=normalize(uCamRot*vec3(nd.x*uTanH*uAsp,nd.y*uTanH,-1.));",
+      " vec3 ro=cameraPosition;float dm=2000.;if(rd.y>1e-3)dm=min(dm,-ro.y/rd.y);",   // same distance the surface would give, so no seam at the horizon
+      " vec3 c=fogIn(ro,rd,dm)+shafts(ro,rd,1.,min(dm,60.),ign(gl_FragCoord.xy));",
+      " gl_FragColor=vec4(finish(c),1.);}"
+    ].join("\n"), { depthTest:false, depthWrite:false }));
+    bg.frustumCulled = false; bg.renderOrder = -1000; scene.add(bg);
+
+    // the surface from below: Snell's window, reflected water outside it
+    var surf = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), shaderMat(
+      "varying vec3 uwPos;varying vec3 uwN;void main(){vec4 w=modelMatrix*vec4(position,1.);uwPos=w.xyz;uwN=vec3(0.,-1.,0.);gl_Position=projectionMatrix*viewMatrix*w;}",
+      [
+        "void main(){vec3 V=uwPos-cameraPosition;float d=length(V);V/=d;",
+        " vec2 q=uwPos.xz*.07;vec2 s=vec2(texture2D(uCaus,q+vec2(uT*.01,0.)).r-texture2D(uCaus,q+vec2(.02+uT*.01,0.)).r,",
+        "  texture2D(uCaus,q.yx*1.3-vec2(0.,uT*.012)).r-texture2D(uCaus,q.yx*1.3+vec2(.02,-uT*.012)).r)*.5;",
+        " vec3 n=normalize(vec3(-s.x*.8,-1.,-s.y*.8));float ci=clamp(dot(V,-n),0.,1.);",
+        " float k=1.-1.769*(1.-ci*ci);float win=smoothstep(-.35,.25,k);",           // window widened a little so it reads on a phone
+        " vec3 rr=refract(V,n,1./1.33);float sd=max(dot(rr,uSun),0.);float fr=pow(1.-sqrt(max(k,0.)),5.);",
+        " vec3 sky=(vec3(.30,.78,1.)*1.3*clamp(1.+3.8*(s.x*.6-s.y*.8),.25,3.)+vec3(1.,.95,.85)*(pow(sd,60.)*1.3+pow(sd,500.)*12.))*(1.-fr*.6);",
+        " vec3 refl=fogIn(uwPos,reflect(V,n),300.)*1.15;",
+        " vec3 c=mix(refl,sky,win);",
+        " c=c*exp(-SIG*d)+fogIn(cameraPosition,V,d)+shafts(cameraPosition,V,1.,min(d,60.),ign(gl_FragCoord.xy));",
+        " gl_FragColor=vec4(finish(c),1.);}"
+      ].join("\n"), { side:THREE.DoubleSide }));
+    surf.rotation.x = Math.PI/2; surf.position.y = 0; scene.add(surf);
+
+
+    // marine snow and bioluminescent sparks: points in a box that wraps around the camera
+    function points(n, seed, frag, size){
+      var a = new Float32Array(n*3), r2 = rnd(seed), ph = new Float32Array(n);
+      for (var j = 0; j < n; j++){ a[j*3] = r2(); a[j*3+1] = r2(); a[j*3+2] = r2(); ph[j] = r2()*6.28; }
+      var gg = new THREE.BufferGeometry();
+      gg.setAttribute("position", new THREE.Float32BufferAttribute(a, 3));
+      gg.setAttribute("aPhase", new THREE.Float32BufferAttribute(ph, 1));
+      var pts = new THREE.Points(gg, shaderMat([
+        "uniform float uT;uniform vec2 uRes;uniform vec3 uBox,uBoxOff;attribute float aPhase;varying float vPh;varying vec3 uwPos;varying vec3 uwN;",
+        "void main(){vec3 b=uBox;vec3 o=vec3(sin(uT*.05+aPhase)*1.5,-uT*" + size[1] + ",0.);",
+        " vec3 p=cameraPosition+(fract(position+(o-cameraPosition)/b)-uBoxOff)*b;",
+        " uwPos=p;uwN=vec3(0.,1.,0.);vPh=aPhase;vec4 mv=viewMatrix*vec4(p,1.);gl_Position=projectionMatrix*mv;",
+        " gl_PointSize=clamp(" + size[0] + ".*uRes.y/(-mv.z*400.),1.,12.);}"
+      ].join("\n"), "varying float vPh;\n" + frag,
+        { transparent:true, depthWrite:false, blending:THREE.AdditiveBlending }));
+      pts.frustumCulled = false; scene.add(pts);
+      return pts;
+    }
+    var snow = points(1400, 11, [
+      "uniform float uSnow;",
+      "void main(){vec2 c=gl_PointCoord-.5;float a=smoothstep(.5,.1,length(c));vec3 V=uwPos-cameraPosition;float d=length(V);",
+      " vec3 L=SUNC*exp(KD*min(uwPos.y,0.))*.10+vec3(.006,.014,.022);",
+      " vec3 sc=L*exp(-SIG*d)*uExpo*a*uSnow*smoothstep(1.5,4.,d);",
+      " gl_FragColor=vec4(uHdr>.5?sc*1.2:pow(tmap(sc),vec3(.4545))*.8,1.);}"
+    ].join("\n"), [26, ".25"]);
+    var bio = points(260, 23, [
+      "uniform float uBio;",
+      "void main(){vec2 c=gl_PointCoord-.5;float r=length(c);float a=smoothstep(.5,.0,r);a*=a;",
+      " float pu=pow(.5+.5*sin(uT*1.4+vPh*7.),5.);vec3 V=uwPos-cameraPosition;float d=length(V);",
+      " gl_FragColor=vec4(vec3(.25,.95,1.)*a*pu*uBio*exp(-.02*d)*1.6,1.);}"
+    ].join("\n"), [60, ".05"]);
+
+    [bg, surf, snow, bio].forEach(function(o){ o.material.userData.noShadow = true; });
+    return { bg:bg, surf:surf, snow:snow, bio:bio };
+  }
+
+  /* ---------- build the world ---------- */
+  function build(){
+    var renderer = new THREE.WebGLRenderer({ canvas:R.canvas, antialias:false, alpha:false, powerPreference:"high-performance" });
+    R.renderer = renderer;
+    var scene = new THREE.Scene(); R.scene = scene;
+    var cam = new THREE.PerspectiveCamera(2*Math.atan(VIEW_H/2/CAM_D)*180/Math.PI, 1, 0.3, 400);
+    cam.position.set(0, CAMY[0], CAM_D); R.cam = cam;
+
+    U = {
+      uT:{value:0}, uSun:{value:new THREE.Vector3(0.25, 1, 0.35).normalize()}, uCaus:{value:null},
+      uExpo:{value:EXPO}, uRays:{value:1}, uRes:{value:new THREE.Vector2(1,1)},
+      uTanH:{value:VIEW_H/2/CAM_D}, uAsp:{value:1}, uBio:{value:0}, uSnow:{value:1}, uBox:{value:new THREE.Vector3(60,24,60)},
+      uBoxOff:{value:new THREE.Vector3(.5,.5,.9)}, uCamRot:{value:new THREE.Matrix3()},
+      uFill:{value:new THREE.Vector3()}, uGlow:{value:0},
+      uHdr:{value:0}, uShadow:{value:null}, uShadowM:{value:new THREE.Matrix4()}, uShadowOn:{value:0}, uShTaps:{value:4}, uShR:{value:0.001}, uLampI:{value:0}
+    };
+
+    // animated caustic texture (Abyssal Garden's water pattern), mipmapped so the shafts can read it blurred
+    var rt = new THREE.WebGLRenderTarget(256, 256, { wrapS:THREE.RepeatWrapping, wrapT:THREE.RepeatWrapping,
+      minFilter:THREE.LinearMipmapLinearFilter, magFilter:THREE.LinearFilter, depthBuffer:false, stencilBuffer:false });
+    rt.texture.generateMipmaps = true;
+    U.uCaus.value = rt.texture;
+    var cScene = new THREE.Scene(), cCam = new THREE.Camera();
+    var cq = new THREE.Mesh(new THREE.PlaneGeometry(2,2), new THREE.ShaderMaterial({
+      uniforms:{ uT:U.uT },
+      vertexShader:"varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}",
+      fragmentShader:[
+        "uniform float uT;varying vec2 vUv;",
+        "float caus(vec2 uv,float t){vec2 p=uv*6.2831853;vec2 i=p;float c=0.;",
+        " for(int n=1;n<=5;n++){float tt=t*(1.-3.5/float(n));i=p+vec2(cos(tt-i.x)+sin(tt+i.y),sin(tt-i.y)+cos(tt+i.x));",
+        "  float s=sin(i.x+tt),k=cos(i.y+tt);c+=abs(s*k)/(1.25*sqrt(s*s+k*k)+1e-4);}",
+        " c=1.17-pow(c/5.,1.4);return pow(abs(c),8.);}",
+        "void main(){gl_FragColor=vec4(vec3(caus(vUv,uT*.45+23.)),1.);}"
+      ].join("\n"), depthTest:false, depthWrite:false
+    }));
+    cq.frustumCulled = false; cScene.add(cq);
+    R.caus = { rt:rt, scene:cScene, cam:cCam };
+
+    // lights; their colour follows the depth each frame
+    R.sun = new THREE.DirectionalLight(0xffffff, 1); scene.add(R.sun); scene.add(R.sun.target);
+    R.hemi = new THREE.HemisphereLight(0xffffff, 0x000000, 1); scene.add(R.hemi);
+    R.lamp = new THREE.PointLight(0x66ccff, 0, 40, 1.2); scene.add(R.lamp);   // dim glow so the deep zones stay playable
+
+    /* -- seabed, rocks, coral and sea grass: one reef that rides along below the camera -- */
+    var reef = new THREE.Group(); scene.add(reef); R.reef = reef;
+    var bedGeo = new THREE.PlaneGeometry(340, 190, 150, 90); bedGeo.rotateX(-Math.PI/2); bedGeo.translate(0, 0, -75);
+    var bp = bedGeo.attributes.position, cols = [], i;
+    for (i = 0; i < bp.count; i++){
+      var x = bp.getX(i), z = bp.getZ(i), y = bedH(x, z);
+      bp.setY(i, y);
+      var m = fbm2(x*0.11+3, z*0.11), wet = 0.8 + 0.35*m;
+      var c = new THREE.Color(0.74*wet, 0.66*wet, 0.50*wet).convertSRGBToLinear();
+      cols.push(c.r, c.g, c.b);
+    }
+    bedGeo.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
+    bedGeo.computeVertexNormals();
+    var bed = new THREE.Mesh(bedGeo, patchMat(new THREE.MeshStandardMaterial({ vertexColors:true, roughness:1 }), { caus:1.0 }));
+    bed.frustumCulled = false;
+    reef.add(bed);
+
+    var rng = rnd(7);
+    var rockGeo = new THREE.IcosahedronGeometry(1, 2);
+    var rp = rockGeo.attributes.position;
+    for (i = 0; i < rp.count; i++){
+      var vx = rp.getX(i), vy = rp.getY(i), vz = rp.getZ(i);
+      var k = 0.72 + 0.55*fbm2(vx*1.7+vz*0.9+4, vy*1.9-vz*1.3+2);
+      rp.setXYZ(i, vx*k, vy*k*0.8, vz*k);
+    }
+    rockGeo.computeVertexNormals();
+    var rocks = new THREE.InstancedMesh(rockGeo, patchMat(new THREE.MeshStandardMaterial({ color:0x6f6a5e, roughness:1, flatShading:true }), { caus:0.8 }), 140);
+    var dmy = new THREE.Object3D();
+    for (i = 0; i < 140; i++){
+      var rx = (rng()-0.5)*200, rz = -4 - rng()*110;
+      var big = rng() < 0.18 ? 2.5 + rng()*4 : 0.4 + rng()*1.4;
+      dmy.position.set(rx, bedH(rx, rz) - big*0.25, rz);
+      dmy.rotation.set(rng()*0.5, rng()*6.3, rng()*0.5);
+      dmy.scale.set(big*(0.8+rng()*0.6), big*(0.6+rng()*0.7), big*(0.8+rng()*0.6));
+      dmy.updateMatrix(); rocks.setMatrixAt(i, dmy.matrix);
+    }
+    rocks.frustumCulled = false;
+    reef.add(rocks);
+
+    // coral heads (brain coral domes) in bright reef colours that the water mutes with depth
+    var domeGeo = new THREE.SphereGeometry(1, 16, 9, 0, Math.PI*2, 0, Math.PI/2);
+    var dpp = domeGeo.attributes.position;
+    for (i = 0; i < dpp.count; i++){
+      var dx = dpp.getX(i), dyv = dpp.getY(i), dz = dpp.getZ(i);
+      var kk = 1 + 0.06*Math.sin(dx*14)*Math.sin(dz*14) + 0.08*fbm2(dx*3+1, dz*3+2);
+      dpp.setXYZ(i, dx*kk, dyv*kk, dz*kk);
+    }
+    domeGeo.computeVertexNormals();
+    var corals = new THREE.InstancedMesh(domeGeo, patchMat(new THREE.MeshStandardMaterial({ color:0xffffff, roughness:0.85 }), { caus:0.9 }), 90);
+    var coralCols = ["#ff8a5c", "#c77dff", "#ffd166", "#ff6fa5", "#7be0ad", "#f4a261"];
+    for (i = 0; i < 90; i++){
+      var cx = (rng()-0.5)*120, cz = -3 - rng()*45, s2 = 0.5 + rng()*1.6;
+      dmy.position.set(cx, bedH(cx, cz) - 0.15, cz);
+      dmy.rotation.set(0, rng()*6.3, 0);
+      dmy.scale.set(s2, s2*(0.55+rng()*0.4), s2);
+      dmy.updateMatrix(); corals.setMatrixAt(i, dmy.matrix);
+      corals.setColorAt(i, new THREE.Color(coralCols[i % coralCols.length]).convertSRGBToLinear());
+    }
+    corals.frustumCulled = false;
+    reef.add(corals); R.corals = corals;
+
+    // sea grass and kelp blades that sway with the swell
+    var blade = new THREE.PlaneGeometry(0.32, 1, 1, 10); blade.translate(0, 0.5, 0);
+    var bl = blade.attributes.position;
+    for (i = 0; i < bl.count; i++){ var by = bl.getY(i); bl.setX(i, bl.getX(i)*(1 - by*0.55)); }
+    blade.computeVertexNormals();
+    var NG = 420, phase = new Float32Array(NG);
+    var grass = new THREE.InstancedMesh(blade, patchMat(new THREE.MeshStandardMaterial({ color:0xffffff, roughness:0.8, side:THREE.DoubleSide }), {
+      phase:true, caus:0.5,
+      bend:"float uwh=uv.y*uv.y;transformed.x+=sin(uT*.9+aPhase+position.y*1.7)*.55*uwh;transformed.z+=cos(uT*.7+aPhase*1.3)*.3*uwh;"
+    }), NG);
+    for (i = 0; i < NG; i++){
+      var clump = Math.floor(i/7), gx = (h1(clump+1)-0.5)*160 + (rng()-0.5)*2.2, gz = -2 - h1(clump+9)*60 + (rng()-0.5)*2.2;
+      var gh = h1(clump+4) < 0.25 ? 4 + rng()*6 : 0.8 + rng()*2.2;
+      dmy.position.set(gx, bedH(gx, gz) - 0.1, gz);
+      dmy.rotation.set((rng()-0.5)*0.3, rng()*6.3, (rng()-0.5)*0.3);
+      dmy.scale.set(gh > 3 ? 1.6 : 1, gh, 1);
+      dmy.updateMatrix(); grass.setMatrixAt(i, dmy.matrix);
+      phase[i] = rng()*6.28;
+      grass.setColorAt(i, new THREE.Color().setHSL(0.24 + rng()*0.08, 0.55, gh > 3 ? 0.28 : 0.36).convertSRGBToLinear());
+    }
+    blade.setAttribute("aPhase", new THREE.InstancedBufferAttribute(phase, 1));
+    grass.frustumCulled = false;
+    reef.add(grass); R.grass = grass;
+
+    // the shark's soft shadow on the sand
+    var sc = document.createElement("canvas"); sc.width = sc.height = 64;
+    var sx = sc.getContext("2d"), sg = sx.createRadialGradient(32,32,0,32,32,32);
+    sg.addColorStop(0, "rgba(0,0,0,0.55)"); sg.addColorStop(1, "rgba(0,0,0,0)");
+    sx.fillStyle = sg; sx.fillRect(0,0,64,64);
+    R.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1,1), new THREE.MeshBasicMaterial({ map:new THREE.CanvasTexture(sc), transparent:true, depthWrite:false }));
+    R.shadow.rotation.x = -Math.PI/2; scene.add(R.shadow);
+
+    /* -- fish: one shape for the school and the prey -- */
+    var body = new THREE.SphereGeometry(1, 16, 10); body.scale(1, 0.42, 0.17);
+    var tail = new THREE.BufferGeometry();
+    tail.setAttribute("position", new THREE.Float32BufferAttribute([-0.85,0,0, -1.5,0.45,0, -1.35,0,0, -0.85,0,0, -1.35,0,0, -1.5,-0.45,0], 3));
+    tail.computeVertexNormals();
+    var dorsalF = new THREE.BufferGeometry();
+    dorsalF.setAttribute("position", new THREE.Float32BufferAttribute([0.3,0.38,0, -0.35,0.62,0, -0.45,0.3,0], 3));
+    dorsalF.computeVertexNormals();
+    var fishGeo = merge([body, tail, dorsalF]);
+    var wiggle = "transformed.z+=sin(uT*11.+aPhase-position.x*2.6)*.16*(.25+max(0.,.4-position.x));";
+    var NS = 80, sPhase = new Float32Array(NS);
+    for (i = 0; i < NS; i++) sPhase[i] = rng()*6.28;
+    var schoolGeo = fishGeo.clone(); schoolGeo.setAttribute("aPhase", new THREE.InstancedBufferAttribute(sPhase, 1));
+    var school = new THREE.InstancedMesh(schoolGeo, patchMat(new THREE.MeshStandardMaterial({ color:0x9fb6c8, roughness:0.35, metalness:0.55, side:THREE.DoubleSide }), { phase:true, bend:wiggle, caus:0.6 }), NS);
+    school.frustumCulled = false; scene.add(school); R.school = school;
+    R.boids = [];
+    for (i = 0; i < NS; i++) R.boids.push({ p:new THREE.Vector3((rng()-0.5)*14, CAMY[0] - 1 + (rng()-0.5)*5, -18 + (rng()-0.5)*10), v:new THREE.Vector3(2 + rng(), (rng()-0.5)*0.3, (rng()-0.5)*0.6) });
+
+    var NP = 14, pPhase = new Float32Array(NP);
+    for (i = 0; i < NP; i++) pPhase[i] = rng()*6.28;
+    var preyGeo = fishGeo.clone(); preyGeo.setAttribute("aPhase", new THREE.InstancedBufferAttribute(pPhase, 1));
+    var prey = new THREE.InstancedMesh(preyGeo, patchMat(new THREE.MeshStandardMaterial({ color:0xffffff, roughness:0.45, metalness:0.15, side:THREE.DoubleSide }), { phase:true, bend:wiggle, caus:0.6 }), NP);
+    for (i = 0; i < NP; i++) prey.setColorAt(i, new THREE.Color(1,1,1));
+    prey.frustumCulled = false; prey.count = 0; scene.add(prey); R.prey = prey;
+
+    // manta rays gliding through the open-water zones
+    var mGeo = new THREE.PlaneGeometry(4.4, 1, 22, 10); mGeo.rotateX(-Math.PI/2);   // a grid bent into a manta's wing outline
+    var mp = mGeo.attributes.position;
+    for (i = 0; i < mp.count; i++){
+      var mx = mp.getX(i), v = mp.getZ(i) + 0.5, ax = Math.abs(mx)/2.2;
+      var zf = 1.15 + (-0.35 - 1.15)*Math.pow(ax, 0.85), zb = -0.95 + (-0.35 + 0.95)*Math.pow(ax, 1.7);
+      var mz = zb + (zf - zb)*(1 - v);
+      mp.setXYZ(i, mx, 0.28*Math.pow(1 - ax, 2)*Math.sin(Math.PI*(1 - v)), mz);
+    }
+    mGeo.computeVertexNormals();
+    var mantaMat = patchMat(new THREE.MeshStandardMaterial({ color:0x2b3440, roughness:0.7, side:THREE.DoubleSide }), {
+      phase:true, caus:0.4, bend:"float ax=abs(position.x);transformed.y+=sin(uT*1.3+aPhase-ax*.9)*.38*ax*ax;"
+    });
+    mGeo.setAttribute("aPhase", new THREE.InstancedBufferAttribute(new Float32Array([0, 2.1]), 1));
+    R.mantas = new THREE.InstancedMesh(mGeo, mantaMat, 2); R.mantas.frustumCulled = false; scene.add(R.mantas);
+
+    var wb = waterBits(scene); R.surf = wb.surf; R.snow = wb.snow; R.bio = wb.bio;
+
+    R.sharks = {};
+    R.camX = 0; R.camY = CAMY[0]; R.bedOff = 7.5; R.yaw = -0.22;
+    R.dmy = new THREE.Object3D();
+  }
+
+  /* the player's shark: the game's own 3D model, lit by the water, body flexing as it swims */
+  function sharkModel(spec){
+    if (R.sharks[spec.id]) return R.sharks[spec.id];
+    var g3 = buildSharkHD(spec);
+    var holder = new THREE.Group(); holder.add(g3); holder.userData.model = g3;
+    R.sharks[spec.id] = holder;
+    return holder;
+  }
+
+  function init(){
+    if (ok || failed) return ok;
+    try {
+      if (window.__NO3D || typeof THREE === "undefined") throw new Error("three.js did not load");
+      R = { canvas:document.createElement("canvas") };
+      R.canvas.id = "ocean";
+      var wrap = document.getElementById("wrap");
+      wrap.insertBefore(R.canvas, wrap.firstChild);
+      build();
+      R.canvas.addEventListener("webglcontextlost", function(e){ e.preventDefault(); ok = false; failed = true; apply(); });
+      initTile();
+      ok = true;
+    } catch(e){ failed = true; ok = false; if (window.console) console.warn("Realistic look off:", e && e.message || e); }
+    apply();
+    return ok;
+  }
+  function active(){ return look === "realistic" && ok; }
+  function apply(){
+    if (R && R.canvas) R.canvas.style.display = active() ? "block" : "none";
+    var lb = document.getElementById("lookBtn");
+    if (lb) lb.textContent = active() ? "🌊" : "🎨";
+    document.querySelectorAll(".lookTab").forEach(function(b){
+      b.classList.toggle("active", b.dataset.look === (active() ? "realistic" : "cartoon"));
+      if (b.dataset.look === "realistic" && failed) b.disabled = true;
+    });
+    applyQuality();
+    var eb = document.getElementById("exploreBtn");
+    if (eb) eb.style.display = failed ? "none" : "";
+    var note = document.getElementById("lookNote");
+    if (note) note.classList.toggle("hidden", !failed);
+  }
+  function set(l){
+    look = l;
+    try { localStorage.setItem(KEY, l); } catch(e){}
+    if (l === "realistic") init();
+    apply();
+  }
+
+  function lerp(a,b,k){ return a + (b-a)*k; }
+  function toWorld(px, py, W, H){ var k = VIEW_H/H; return [R.cam.position.x + (px - W/2)*k, R.cam.position.y + (H/2 - py)*k]; }
+
+  /* ---------- per frame ---------- */
+  var stats = { D:5, rays:1, fill:0 };
+  function frame(t, dt, g, sh, W, H, now, flash){
+    if (!active() || (X && X.on)) return;
+    var zi = Math.min(g.zone, CAMY.length-1);
+    var zone = (g.abyss && g.abyssSpec) ? g.abyssSpec : ZONES[g.zone];
+    var k = 1 - Math.exp(-dt*1.2);
+    var px2m = VIEW_H/H, i;
+
+    // camera: eases to the zone's depth (a new zone reads as diving deeper) and drifts with the shark for parallax
+    R.camY = lerp(R.camY, CAMY[zi], k);
+    R.camX = Math.max(-70, Math.min(70, R.camX + sh.vx*4*px2m*dt*0.22 + dt*0.15));
+    var shake = now < g.shakeUntil ? 0.18 : 0;
+    R.cam.position.set(R.camX + (Math.random()-0.5)*shake, R.camY + (Math.random()-0.5)*shake, CAM_D);
+    R.cam.aspect = W/H; R.cam.updateProjectionMatrix();
+    U.uAsp.value = W/H;
+
+    // reef only in the four shallow zones: below that it sinks away into the gloom
+    R.bedOff = lerp(R.bedOff, zi <= 3 ? 7.5 : 70, k);
+    R.reef.position.set(0, R.camY - R.bedOff, 0);
+    R.reef.visible = R.bedOff < 65;
+    R.corals.visible = zi <= 1;
+    R.grass.count = [300, 420, 150, 420][zi] || 0;
+
+    // light at the camera's depth
+    var y = R.camY, fill = Math.max(0, Math.min(1, (zi - 4)/4));
+    R.sun.color.setRGB(SUNC[0]*Math.exp(KD[0]*y)*0.55, SUNC[1]*Math.exp(KD[1]*y)*0.55, SUNC[2]*Math.exp(KD[2]*y)*0.55);
+    R.sun.position.copy(U.uSun.value).multiplyScalar(30).add(R.cam.position);
+    R.sun.target.position.copy(R.cam.position);
+    R.hemi.color.setRGB(WCOL[0]*Math.exp(KD[0]*y)*0.7 + 0.05*fill, WCOL[1]*Math.exp(KD[1]*y)*0.7 + 0.14*fill, WCOL[2]*Math.exp(KD[2]*y)*0.7 + 0.24*fill);
+    R.lamp.intensity = 1.1*fill; U.uLampI.value = 0.35*fill; U.uFill.value.set(0.004*fill, 0.012*fill, 0.024*fill); R.lamp.position.set(R.cam.position.x, R.cam.position.y + 3, 6);
+    R.hemi.groundColor.setRGB(0.01 + 0.01*fill, 0.03 + 0.03*fill, 0.05 + 0.05*fill);
+    U.uT.value = t % 600;
+    U.uRays.value = 0.54*Math.max(0, Math.min(1, 1 - (-R.camY - 10)/90));
+    U.uBio.value = zi >= 7 ? (zi - 6)/3 : 0;
+    U.uExpo.value = EXPO*(1 + 2.2*fill);
+
+    // a school of silver fish: simple boids around a slowly wandering point behind the game plane
+    var showSchool = zi <= 6, dmy = R.dmy;
+    R.school.visible = showSchool;
+    if (showSchool){
+      var tg = new THREE.Vector3(R.camX + 9*Math.sin(t*0.08), R.camY - 0.5 + 2.5*Math.sin(t*0.13), -17 + 5*Math.sin(t*0.11));
+      var B = R.boids, XA = new THREE.Vector3(1,0,0), dir = new THREE.Vector3();
+      var sep = new THREE.Vector3(), ali = new THREE.Vector3(), coh = new THREE.Vector3(), tmp = new THREE.Vector3();
+      for (i = 0; i < B.length; i++){
+        var b = B[i], n = 0; sep.set(0,0,0); ali.set(0,0,0); coh.set(0,0,0);
+        for (var j = 0; j < B.length; j++){
+          if (i === j) continue;
+          var o = B[j], dd = b.p.distanceToSquared(o.p);
+          if (dd < 9){ n++; ali.add(o.v); coh.add(o.p); if (dd < 0.8) sep.add(tmp.copy(b.p).sub(o.p).divideScalar(dd + 0.05)); }
+        }
+        if (n){ ali.divideScalar(n).sub(b.v).multiplyScalar(0.9); coh.divideScalar(n).sub(b.p).multiplyScalar(0.6); }
+        tmp.copy(tg).sub(b.p).multiplyScalar(0.12);
+        b.v.addScaledVector(sep, 1.6*dt).addScaledVector(ali, dt).addScaledVector(coh, dt).addScaledVector(tmp, dt);
+        var sp = b.v.length(), want = Math.max(1.6, Math.min(3.6, sp));
+        b.v.multiplyScalar(want/(sp || 1));
+        b.p.addScaledVector(b.v, dt);
+        dir.copy(b.v).normalize();
+        dmy.position.copy(b.p); dmy.rotation.set(0,0,0); dmy.quaternion.setFromUnitVectors(XA, dir); dmy.scale.setScalar(0.22);
+        dmy.updateMatrix(); R.school.setMatrixAt(i, dmy.matrix);
+      }
+      R.school.instanceMatrix.needsUpdate = true;
+    }
+
+    // mantas in the open-water zones
+    R.mantas.visible = zi >= 4 && zi <= 6;
+    if (R.mantas.visible){
+      for (i = 0; i < 2; i++){
+        var mx = R.camX + ((t*1.1 + i*37) % 80) - 40, mz = -24 - i*14;
+        dmy.position.set(mx, R.camY + 3 - i*4 + Math.sin(t*0.4+i)*0.8, mz);
+        dmy.rotation.set(Math.sin(t*0.5+i)*0.12, Math.PI/2 - 0.35, 0.12);
+        dmy.scale.setScalar(1.3 + i*0.4);
+        dmy.updateMatrix(); R.mantas.setMatrixAt(i, dmy.matrix);
+      }
+      R.mantas.instanceMatrix.needsUpdate = true;
+    }
+
+    // the game's prey fish, now 3D on the game plane
+    var cnt = 0, col = R.col || (R.col = new THREE.Color());
+    g.fish.forEach(function(f){
+      if (f.type === "plankton" || cnt >= 14) return;
+      var w = toWorld(f.x, f.y, W, H), s = f.r*1.25*px2m;
+      dmy.position.set(w[0], w[1], 0);
+      dmy.rotation.set(0, f.vx >= 0 ? -0.3 : Math.PI + 0.3, Math.sin(t*2.4+f.seed)*0.15);
+      dmy.scale.setScalar(s);
+      dmy.updateMatrix(); R.prey.setMatrixAt(cnt, dmy.matrix);
+      col.set(f.color).convertSRGBToLinear(); R.prey.setColorAt(cnt, col);
+      cnt++;
+    });
+    R.prey.count = cnt;
+    R.prey.instanceMatrix.needsUpdate = true;
+    if (R.prey.instanceColor) R.prey.instanceColor.needsUpdate = true;
+    campaignCreatures(g, t, W, H, px2m, now, g.zone >= 7);
+
+    // the player's shark
+    Object.keys(R.sharks).forEach(function(id){ R.sharks[id].visible = false; });
+    var showShark = g.mode === "title" || g.mode === "play" || g.mode === "rest";
+    R.shadow.visible = false;
+    if (showShark){
+      var holder = sharkModel(zone);
+      if (!holder.parent) R.scene.add(holder);
+      holder.visible = !flash || Math.sin(t*25) > -0.2;
+      var ws = toWorld(sh.x, sh.y, W, H);
+      var targetYaw = sh.vx >= 0 ? -0.22 : Math.PI + 0.22;
+      R.yaw = lerp(R.yaw, targetYaw, 1 - Math.exp(-dt*7));
+      var pitch = Math.max(-0.5, Math.min(0.5, Math.atan2(-sh.vy, Math.abs(sh.vx) + 40)));
+      holder.position.set(ws[0], ws[1], 0);
+      holder.rotation.set(0, R.yaw, 0);
+      var m3 = holder.userData.model;
+      m3.rotation.set(0, 0, pitch);
+      var ls = zone.len*px2m*1.05/2;
+      holder.scale.setScalar(ls);
+      var tl = m3.userData.tail;
+      if (tl) tl.rotation.y = -Math.cos(t*8 + 0.94*2.4)*0.35;
+      if (m3.userData.swim) m3.userData.swim(t*8, 0.8);
+      // soft shadow on the sand under it
+      if (R.reef.visible && zi <= 3){
+        var bedY = R.reef.position.y + bedH(ws[0], 0) + 0.05;
+        var gap = Math.max(0.5, ws[1] - bedY);
+        R.shadow.visible = true;
+        R.shadow.position.set(ws[0] + gap*0.25, bedY, 0);
+        R.shadow.scale.set(ls*2.4*(1 + gap*0.06), ls*1.1*(1 + gap*0.06), 1);
+        R.shadow.material.opacity = Math.max(0, 1.3*U.uRays.value*(1 - gap/14));
+      }
+    }
+
+    // keep it smooth on phones: lower the render resolution while frames run slow
+    ema = ema*0.95 + dt*1000*0.05;
+    if (!R.pr) R.pr = Math.min(Q().pr, window.devicePixelRatio || 1);
+    if (ema > 24){ slow += dt; if (slow > 1.2 && R.pr > 0.5){ R.pr = Math.max(0.5, R.pr - 0.12); slow = 0; } } else slow = 0;
+    var rw = Math.round(W*R.pr), rh = Math.round(H*R.pr);
+    if (R.canvas.width !== rw || R.canvas.height !== rh){ R.renderer.setPixelRatio(1); R.renderer.setSize(rw, rh, false); }
+    U.uRes.value.set(rw, rh);
+
+    if (R.ov) for (var ok2 in R.ov) U[ok2].value = R.ov[ok2];   // test overrides
+    // caustic texture, then the scene
+    present(R.scene, R.cam, null);
+
+    if (U.uRays.value > 0.05) drawTile(t);
+    stats.D = -R.camY; stats.rays = U.uRays.value/0.54; stats.fill = fill;
+  }
+
+  /* ---------- 2D sprites that stay 2D (jellies, snakes, squid, dolphin, orbs...) ---------- */
+  var tc = null, T = null;
+  function initTile(){
+    tc = document.createElement("canvas"); tc.width = tc.height = 128;
+    var gl = tc.getContext("webgl", { alpha:true, premultipliedAlpha:true, antialias:false, depth:false, preserveDrawingBuffer:true });
+    if (!gl){ tc = null; return; }
+    function shd(type, src){ var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
+    var p = gl.createProgram();
+    gl.attachShader(p, shd(gl.VERTEX_SHADER, "attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}"));
+    gl.attachShader(p, shd(gl.FRAGMENT_SHADER, [
+      "precision mediump float;uniform float uT;",
+      "float caus(vec2 uv,float t){vec2 p=uv*6.2831853;vec2 i=p;float c=0.;",
+      " for(int n=1;n<=4;n++){float tt=t*(1.-3.5/float(n));i=p+vec2(cos(tt-i.x)+sin(tt+i.y),sin(tt-i.y)+cos(tt+i.x));",
+      "  float s=sin(i.x+tt),k=cos(i.y+tt);c+=abs(s*k)/(1.25*sqrt(s*s+k*k)+1e-4);}",
+      " c=1.17-pow(c/4.,1.4);return pow(abs(c),8.);}",
+      "void main(){float c=min(caus(gl_FragCoord.xy/128.,uT*.45+23.)*1.4,1.);gl_FragColor=vec4(vec3(.85,1.,.95)*c,c);}"
+    ].join("\n")));
+    gl.linkProgram(p); gl.useProgram(p);
+    var b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW);
+    var loc = gl.getAttribLocation(p, "p"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    T = { gl:gl, uT:gl.getUniformLocation(p, "uT") };
+  }
+  var tileN = 0;
+  function drawTile(t){ if (!T || (tileN++ % 2)) return; T.gl.viewport(0,0,128,128); T.gl.uniform1f(T.uT, t % 600); T.gl.drawArrays(T.gl.TRIANGLES, 0, 3); }
+
+  function waterRGB(D){
+    var c = [];
+    for (var i = 0; i < 3; i++){
+      var v = WCOL[i]*Math.exp(-KD[i]*D)*EXPO*(1 + 2.2*stats.fill);
+      v = Math.min(1, (v*(2.51*v+0.03))/(v*(2.43*v+0.59)+0.14));
+      c.push(Math.round(255*Math.pow(v, 0.4545)));
+    }
+    return c;
+  }
+  // sunlight from above, the water's colour and moving caustics, laid over the 2D sprites only
+  function grade(ctx, t, W, H){
+    if (!active()) return;
+    var wc = waterRGB(stats.D);
+    ctx.save();
+    ctx.globalCompositeOperation = "source-atop";
+    var lg = ctx.createLinearGradient(0, 0, 0, H);
+    lg.addColorStop(0, "rgba(255,250,225," + (0.03 + 0.08*stats.rays).toFixed(3) + ")");
+    lg.addColorStop(0.45, "rgba(255,255,255,0)");
+    lg.addColorStop(1, "rgba(0,10,28,0.25)");
+    ctx.fillStyle = lg; ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = Math.min(0.4, 0.12 + 0.28*(1 - Math.exp(-stats.D/40)));
+    ctx.fillStyle = "rgb(" + Math.max(wc[0],8) + "," + Math.max(wc[1],22) + "," + Math.max(wc[2],48) + ")";
+    ctx.fillRect(0, 0, W, H);
+    if (stats.rays > 0.05 && tc){
+      ctx.globalAlpha = 0.4*stats.rays;
+      var S = 190, ox = -((t*9) % S), oy = -((t*5) % S);
+      for (var x = ox; x < W; x += S) for (var y = oy; y < H; y += S) ctx.drawImage(tc, x, y, S, S);
+    }
+    ctx.restore();
+  }
+  // round, glassy bubbles with a highlight
+  function bubble(ctx, b){
+    ctx.strokeStyle = "rgba(225,250,255,0.45)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.beginPath(); ctx.arc(b.x - b.r*0.35, b.y - b.r*0.35, Math.max(0.6, b.r*0.3), 0, Math.PI*2); ctx.fill();
+  }
+
+  /* ====================================================================================
+     Shared look for the open world and the 3D sea creatures: one water material
+     (Abyssal Garden's lighting: skylight from above, bounce from below, sun through the
+     water, caustics, haze, shafts) used by every mesh, with hooks to bend vertices.
+     ==================================================================================== */
+  var UW_NOISE = [
+    "float h3(vec3 p){return fract(sin(dot(p,vec3(17.13,31.71,11.37)))*43758.5453);}",
+    "float vn3(vec3 p){vec3 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);",
+    " return mix(mix(mix(h3(i),h3(i+vec3(1,0,0)),f.x),mix(h3(i+vec3(0,1,0)),h3(i+vec3(1,1,0)),f.x),f.y),",
+    "  mix(mix(h3(i+vec3(0,0,1)),h3(i+vec3(1,0,1)),f.x),mix(h3(i+vec3(0,1,1)),h3(i+vec3(1,1,1)),f.x),f.y),f.z);}"
+  ].join("\n");
+
+  function lin(c){ return new THREE.Color(c).convertSRGBToLinear(); }
+
+  // opts: color, local (glsl on p, n), world (glsl on w), phase, k2, double, detail, caus, trans, emit, alpha, discard, transparent, blend
+  function uwMat(opts){
+    opts = opts || {};
+    var c = lin(opts.color === undefined ? 0xffffff : opts.color);
+    var attrs = (opts.phase ? "attribute float aPhase;\n" : "") + (opts.k2 ? "attribute vec2 aK;\n" : "");
+    var vs = [
+      "uniform float uT;uniform vec3 uColor;",
+      attrs,
+      "varying vec3 uwPos;varying vec3 uwN;varying vec3 vCol;varying vec2 vUv;varying vec3 vLoc;",
+      "void main(){vec3 p=position;vec3 n=normal;vUv=uv;",
+      opts.local || "",
+      " vLoc=p;vec4 w=vec4(p,1.);",
+      "#ifdef USE_INSTANCING",
+      " w=instanceMatrix*w;n=mat3(instanceMatrix)*n;",
+      "#endif",
+      " w=modelMatrix*w;n=mat3(modelMatrix)*n;",
+      opts.world || "",
+      " uwPos=w.xyz;uwN=n;vCol=uColor;",
+      "#ifdef USE_COLOR",
+      " vCol*=color;",
+      "#endif",
+      "#ifdef USE_INSTANCING_COLOR",
+      " vCol*=instanceColor;",
+      "#endif",
+      " gl_Position=projectionMatrix*viewMatrix*w;}"
+    ].join("\n");
+    var fs = [
+      "uniform vec3 uFill;uniform float uGlow;",
+      "varying vec3 vCol;varying vec2 vUv;varying vec3 vLoc;",
+      UW_NOISE,
+      "void main(){",
+      opts.discard || "",
+      " vec3 N=normalize(uwN);" + (opts.double ? "if(!gl_FrontFacing)N=-N;" : ""),
+      " vec3 alb=vCol;",
+      opts.detail ? " alb*=" + opts.detail + ";" : "",
+      " float y=min(uwPos.y,0.);",
+      " vec3 sunL=SUNC*exp(KD*y/uSun.y)*.62;",                                     // sunlight after its slant path down
+      " vec3 hi=fogIn(uwPos,vec3(0.,1.,0.),80.)*1.5;vec3 lo=fogIn(uwPos,vec3(0.,-1.,0.),80.);",   // skylight and bounce, as Abyssal Garden lights its plants
+      " vec3 amb=mix(lo,hi,.5+.5*N.y)*.55+uFill;",
+      " vec2 q=uwPos.xz-uSun.xz*(uwPos.y/uSun.y);vec2 o=vec2(.004,.0025);",
+      " vec3 ca=vec3(texture2D(uCaus,q/3.3+o).r,texture2D(uCaus,q/3.3).r,texture2D(uCaus,q/3.3-o).r);",
+      " float cb=texture2D(uCaus,q.yx/6.9+.37).r;",
+      " vec3 cc=min(pow(ca,vec3(2.3))*5.*(.45+cb*1.3),vec3(4.))*smoothstep(-60.,-8.,uwPos.y-cameraPosition.y+0.);",
+      " float dif=max(dot(N,uSun),0.);float sh=shadowAt(uwPos+N*.06);sunL*=sh;",
+      " vec3 V=uwPos-cameraPosition;float d=length(V);vec3 rd=V/d;",
+      " vec3 c=alb*(sunL*(dif*.75+cc*max(N.y,0.)*" + (opts.caus === undefined ? ".5" : opts.caus.toFixed(2)) + ")+amb*(.55+.45*smoothstep(-1.,1.,N.y+.3)));",
+      " c+=sunL*pow(max(dot(N,normalize(uSun-rd)),0.)," + (opts.gloss || 24).toFixed(1) + ")*" + (opts.spec === undefined ? 0.06 : opts.spec).toFixed(3) + ";",
+      opts.trans ? " c+=alb*sunL*pow(max(dot(-N,uSun),0.),1.5)*" + opts.trans.toFixed(2) + ";" : "",
+      opts.emit ? " c+=" + opts.emit + ";" : "",
+      " c=c*exp(-SIG*d)+fogIn(cameraPosition,rd,d)+shafts(cameraPosition,rd,1.,min(d,60.),ign(gl_FragCoord.xy));",
+      " gl_FragColor=vec4(finish(c)," + (opts.alpha || "1.") + ");}"
+    ].join("\n");
+    var m = shaderMat(vs, fs, {
+      side: opts.double ? THREE.DoubleSide : THREE.FrontSide,
+      transparent: !!opts.transparent, depthWrite: !opts.transparent,
+      blending: opts.blend || THREE.NormalBlending,
+      vertexColors: !!opts.vColor,
+      extensions: { derivatives: true }
+    });
+    m.uniforms.uColor = { value: new THREE.Vector3(c.r, c.g, c.b) };
+    m.uniforms.uFill = U.uFill; m.uniforms.uGlow = U.uGlow;
+    if (!opts.transparent){
+      m.userData.depthMat = new THREE.ShaderMaterial({ uniforms:{ uT:U.uT, uColor:m.uniforms.uColor }, vertexShader:vs,
+        fragmentShader:"#include <packing>\nuniform float uT;varying vec3 vCol;varying vec2 vUv;varying vec3 vLoc;\n" + UW_NOISE +
+          "\nvoid main(){" + (opts.discard || "") + "gl_FragColor=packDepthToRGBA(gl_FragCoord.z);}",
+        side: opts.double ? THREE.DoubleSide : THREE.FrontSide, vertexColors: !!opts.vColor });
+    }
+    return m;
+  }
+
+  /* ---------- geometry builders ---------- */
+  function fishGeometry(){
+    var body = new THREE.SphereGeometry(1, 14, 9); body.scale(1, 0.42, 0.17);
+    var tail = new THREE.BufferGeometry();
+    tail.setAttribute("position", new THREE.Float32BufferAttribute([-0.85,0,0, -1.5,0.45,0, -1.35,0,0, -0.85,0,0, -1.35,0,0, -1.5,-0.45,0], 3));
+    tail.computeVertexNormals();
+    var dorsalF = new THREE.BufferGeometry();
+    dorsalF.setAttribute("position", new THREE.Float32BufferAttribute([0.3,0.38,0, -0.35,0.62,0, -0.45,0.3,0], 3));
+    dorsalF.computeVertexNormals();
+    return merge([body, tail, dorsalF]);
+  }
+  var FISH_WIGGLE = "p.z+=sin(uT*11.+aPhase-p.x*2.6)*.16*(.25+max(0.,.4-p.x));";
+
+  function mantaGeometry(){
+    var g = new THREE.PlaneGeometry(4.4, 1, 22, 10); g.rotateX(-Math.PI/2);
+    var mp = g.attributes.position;
+    for (var i = 0; i < mp.count; i++){
+      var mx = mp.getX(i), v = mp.getZ(i) + 0.5, ax = Math.abs(mx)/2.2;
+      var zf = 1.15 + (-0.35 - 1.15)*Math.pow(ax, 0.85), zb = -0.95 + (-0.35 + 0.95)*Math.pow(ax, 1.7);
+      mp.setXYZ(i, mx, 0.28*Math.pow(1 - ax, 2)*Math.sin(Math.PI*(1 - v)), zb + (zf - zb)*(1 - v));
+    }
+    g.computeVertexNormals();
+    return g;
+  }
+  var MANTA_FLAP = "float ax=abs(p.x);p.y+=sin(uT*1.3+aPhase-ax*.9)*.38*ax*ax;";
+
+  function rockGeometry(seed, detail){
+    var g = new THREE.IcosahedronGeometry(1, detail || 2), rp = g.attributes.position;
+    for (var i = 0; i < rp.count; i++){
+      var vx = rp.getX(i), vy = rp.getY(i), vz = rp.getZ(i);
+      var k = 0.7 + 0.55*fbm2(vx*1.7 + vz*0.9 + seed, vy*1.9 - vz*1.3 + 2) + 0.12*fbm2(vx*5 + seed, vz*5 + vy*3);
+      rp.setXYZ(i, vx*k, vy*k*0.8, vz*k);
+    }
+    g.computeVertexNormals();
+    return g;
+  }
+
+  // a barrel sponge: a thick, bumpy cup with a hollow top
+  function spongeGeometry(){
+    var pts = [[0.02,0],[0.5,0.02],[0.62,0.3],[0.68,0.75],[0.64,1.15],[0.56,1.32],[0.47,1.3],[0.42,1.0],[0.4,0.75],[0.02,0.7]]
+      .map(function(a){ return new THREE.Vector2(a[0], a[1]); });
+    var g = new THREE.LatheGeometry(pts, 16); g = g.toNonIndexed ? g : g;
+    var p = g.attributes.position;
+    for (var i = 0; i < p.count; i++){
+      var x = p.getX(i), y = p.getY(i), z = p.getZ(i), a = Math.atan2(z, x);
+      var k = 1 + 0.07*Math.sin(a*9 + y*5) + 0.05*Math.sin(y*17);
+      p.setXYZ(i, x*k, y, z*k);
+    }
+    g.computeVertexNormals();
+    return g;
+  }
+
+  // branching coral: a few tapering cylinders forking from one base
+  function branchCoralGeometry(seed){
+    var r = rnd(seed), parts = [];
+    function limb(x, y, z, dx, dy, dz, len, rad, depth){
+      var c = new THREE.CylinderGeometry(rad*0.7, rad, len, 6, 1); c.translate(0, len/2, 0);
+      var dir = new THREE.Vector3(dx, dy, dz).normalize();
+      c.applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), dir)));
+      c.translate(x, y, z); parts.push(c);
+      if (depth > 0) for (var k = 0; k < 2 + (r() < 0.4 ? 1 : 0); k++){
+        limb(x + dir.x*len, y + dir.y*len, z + dir.z*len, dir.x + (r()-0.5)*1.2, dir.y + 0.3, dir.z + (r()-0.5)*1.2, len*0.72, rad*0.7, depth - 1);
+      }
+    }
+    for (var b = 0; b < 4; b++) limb(0, 0, 0, (r()-0.5)*1.2, 1, (r()-0.5)*1.2, 0.45 + r()*0.2, 0.07, 2);
+    return merge(parts);
+  }
+
+  // a blade for sea grass and ground cover, rooted at y = 0
+  function bladeGeometry(w){
+    var b = new THREE.PlaneGeometry(w || 0.32, 1, 1, 6); b.translate(0, 0.5, 0);
+    var bl = b.attributes.position;
+    for (var i = 0; i < bl.count; i++){ var by = bl.getY(i); bl.setX(i, bl.getX(i)*(1 - by*0.6)); }
+    b.computeVertexNormals();
+    return b;
+  }
+
+  // a kelp leaf, rooted at x = 0 and pointing along +x
+  function leafGeometry(){
+    var g = new THREE.PlaneGeometry(1, 0.3, 6, 1); g.translate(0.5, 0, 0);
+    var p = g.attributes.position;
+    for (var i = 0; i < p.count; i++){
+      var x = p.getX(i);
+      p.setY(i, p.getY(i)*Math.sin(Math.PI*Math.pow(Math.min(x, 0.999), 0.75)) + 0.12*x*x);
+      p.setZ(i, 0.1*x*x);
+    }
+    g.computeVertexNormals();
+    return g;
+  }
+
+  /* ---------- the sea creatures (used by the open world and by the campaign) ---------- */
+  function jellyGeometry(){
+    var bell = new THREE.SphereGeometry(1, 18, 9, 0, Math.PI*2, 0, Math.PI*0.55); bell.scale(1, 0.72, 1);
+    var parts = [bell];
+    for (var k = 0; k < 8; k++){
+      var a = k/8*Math.PI*2, t = new THREE.PlaneGeometry(0.07, 2.4, 1, 10); t.translate(0, -1.2 - 0.05, 0);
+      t.rotateY(a); t.translate(Math.cos(a)*0.55, 0.12, Math.sin(a)*0.55); parts.push(t);
+    }
+    for (var m = 0; m < 4; m++){
+      var a2 = m/4*Math.PI*2 + 0.4, arm = new THREE.PlaneGeometry(0.22, 1.5, 1, 8); arm.translate(0, -0.75, 0);
+      arm.rotateY(a2); arm.translate(Math.cos(a2)*0.12, 0.1, Math.sin(a2)*0.12); parts.push(arm);
+    }
+    var g = merge(parts.map(function(x){ return x.index ? x.toNonIndexed() : x; }));
+    return g;
+  }
+  function jellyMat(){
+    return uwMat({ color:0xffffff, phase:true, double:true, transparent:true, caus:0.3, trans:0.8,
+      local:"float bl=step(-.05,p.y);float pu=1.+.13*sin(uT*2.6+aPhase-p.y*1.5);p.xz*=mix(1.,pu,bl);" +
+            "float hang=max(0.,-p.y);p.x+=sin(uT*1.7+aPhase+p.y*1.8)*.16*hang;p.z+=cos(uT*1.3+aPhase+p.y*1.5)*.12*hang;",
+      emit:"vCol*(.25+uGlow*1.4)*(.6+.4*sin(uT*2.+vLoc.y*3.))",
+      alpha:".62" });
+  }
+
+  function orbGeometry(){ return new THREE.IcosahedronGeometry(1, 3); }
+  function orbMat(){
+    return uwMat({ color:0xffffff, caus:0.2, transparent:true,
+      emit:"vCol*(1.4+.6*sin(uT*4.))*(.4+.6*pow(1.-abs(dot(normalize(uwN),normalize(cameraPosition-uwPos))),2.))",
+      alpha:".88" });
+  }
+
+  function dolphinGroup(){
+    var g = new THREE.Group();
+    var prof = [[0,1.0],[0.06,0.96],[0.08,0.88],[0.1,0.82],[0.17,0.74],[0.21,0.6],[0.22,0.35],[0.2,0.1],[0.15,-0.2],[0.09,-0.5],[0.05,-0.75],[0.03,-0.92],[0,-0.98]]
+      .map(function(a){ return new THREE.Vector2(a[0], a[1]); });
+    var body = new THREE.LatheGeometry(prof, 16); body.rotateZ(-Math.PI/2); body.scale(1, 0.95, 0.85);
+    // darker back, pale belly through vertex colour
+    var bp = body.attributes.position, cols = [];
+    for (var i = 0; i < bp.count; i++){ var k = Math.max(0, Math.min(1, 0.5 + bp.getY(i)*3)); var cc = lin(0xe8eef2).lerp(lin(0x5f7080), k); cols.push(cc.r, cc.g, cc.b); }
+    body.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
+    var mat = uwMat({ color:0xffffff, vColor:true, caus:0.6,
+      local:"p.y+=sin(uT*9.-p.x*2.2)*.06*max(0.,-p.x-.2);" });
+    g.add(new THREE.Mesh(body, mat));
+    var finMat = uwMat({ color:0x5f7080, double:true, caus:0.5, local:"p.y+=sin(uT*9.-p.x*2.2)*.06*max(0.,-p.x-.2);" });
+    function fin(pts, z){
+      var s = new THREE.Shape(); s.moveTo(pts[0][0], pts[0][1]);
+      for (var k = 1; k < pts.length; k++) s.lineTo(pts[k][0], pts[k][1]);
+      var geo = new THREE.ShapeGeometry(s); geo.translate(0, 0, z || 0); return new THREE.Mesh(geo, finMat);
+    }
+    g.add(fin([[0.1,0.18],[-0.12,0.45],[-0.25,0.42],[-0.2,0.15]]));
+    var fl = fin([[-0.86,0],[-1.1,0.28],[-1.02,0],[-1.1,-0.28]]); fl.rotation.x = Math.PI/2; g.add(fl);
+    var pf = fin([[0.3,-0.12],[0.12,-0.42],[0.06,-0.38],[0.15,-0.1]], 0.16); pf.rotation.x = -0.5; g.add(pf);
+    var pf2 = pf.clone(); pf2.position.z = -0.32; pf2.rotation.x = 0.5; g.add(pf2);
+    var eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), uwMat({ color:0x111820 }));
+    eye.position.set(0.62, 0.06, 0.14); g.add(eye); var e2 = eye.clone(); e2.position.z = -0.14; g.add(e2);
+    return g;
+  }
+
+  function squidGroup(noLong){
+    var g = new THREE.Group();
+    var prof = [[0,1.1],[0.08,0.95],[0.2,0.7],[0.27,0.35],[0.28,0],[0.25,-0.2],[0.18,-0.32],[0,-0.34]]
+      .map(function(a){ return new THREE.Vector2(a[0], a[1]); });
+    var mantle = new THREE.LatheGeometry(prof, 14); mantle.rotateZ(-Math.PI/2);
+    var mm = uwMat({ color:0xc2563d, caus:0.6, trans:0.4, detail:"(.8+.4*vn3(vLoc*9.))", local:"p.yz*=1.+.06*sin(uT*3.)*step(p.x,.5);" });
+    g.add(new THREE.Mesh(mantle, mm));
+    var arms = [];
+    for (var k = 0; k < 10; k++){
+      var a = k/10*Math.PI*2, long = k < 2, len = long ? 2.2 : 1.1;
+      if (long && noLong) continue;
+      var t = new THREE.CylinderGeometry(0.012, long ? 0.04 : 0.05, len, 5, 10); t.translate(0, -len/2, 0); t.rotateZ(-Math.PI/2);
+      t.translate(-0.3, Math.sin(a)*0.12, Math.cos(a)*0.12); arms.push(t);
+    }
+    var am = uwMat({ color:0xb04a35, caus:0.4, local:"float tl=max(0.,-p.x-.3);p.y+=sin(uT*3.+p.x*2.5+p.z*20.)*.1*tl;p.z+=cos(uT*2.4+p.x*2.+p.y*20.)*.08*tl;" });
+    g.add(new THREE.Mesh(merge(arms), am));
+    var eye = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), uwMat({ color:0x15121a, emit:"vec3(.02,.03,.04)" }));
+    eye.position.set(-0.25, 0.04, 0.24); g.add(eye); var e2 = eye.clone(); e2.position.z = -0.24; g.add(e2);
+    // turn so it swims mantle first along +x
+    g.children.forEach(function(ch){ ch.rotation.y += Math.PI; ch.position.x = -ch.position.x; ch.position.z = -ch.position.z; });
+    return g;
+  }
+
+  // a banded sea snake: a tube whose spine is moved on the CPU each frame
+  function makeSnake(segs){
+    var R8 = 8, n = segs, pos = new Float32Array(n*R8*3), nor = new Float32Array(n*R8*3), col = [], idx = [];
+    for (var i = 0; i < n; i++) for (var j = 0; j < R8; j++){
+      var band = Math.floor(i/3) % 2, cc = band ? lin(0xf2f2ee) : lin(0x15161a);
+      if (i === 0) cc = lin(0x2a2a2a);
+      col.push(cc.r, cc.g, cc.b);
+    }
+    for (i = 0; i < n-1; i++) for (j = 0; j < R8; j++){
+      var a = i*R8 + j, b = i*R8 + (j+1)%R8, c = a + R8, d = b + R8;
+      idx.push(a, c, b, b, c, d);
+    }
+    var g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+    g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+    g.setIndex(idx);
+    var m = new THREE.Mesh(g, uwMat({ color:0xffffff, vColor:true, caus:0.6 }));
+    m.frustumCulled = false;
+    m.userData.n = n;
+    return m;
+  }
+  var _sv = null;
+  // pts: [{x,y,z}] head first; rad(i) radius; side: vector the ribbon tail flattens along
+  function setSnake(m, pts, rad){
+    if (!_sv) _sv = { t:new THREE.Vector3(), a:new THREE.Vector3(), b:new THREE.Vector3(), up:new THREE.Vector3(0,0,1) };
+    var n = m.userData.n, pos = m.geometry.attributes.position.array, nor = m.geometry.attributes.normal.array, R8 = 8;
+    for (var i = 0; i < n; i++){
+      var p0 = pts[Math.max(0, i-1)], p1 = pts[Math.min(n-1, i+1)], p = pts[i];
+      _sv.t.set(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z).normalize();
+      _sv.a.crossVectors(_sv.t, _sv.up); if (_sv.a.lengthSq() < 1e-4) _sv.a.set(0,1,0); _sv.a.normalize();
+      _sv.b.crossVectors(_sv.a, _sv.t).normalize();
+      var r = rad(i), flat = i > n - 4 ? 1.8 : 1;
+      for (var j = 0; j < R8; j++){
+        var an = j/R8*Math.PI*2, ca = Math.cos(an), sa = Math.sin(an), k = (i*R8 + j)*3;
+        var nx = _sv.a.x*ca + _sv.b.x*sa, ny = _sv.a.y*ca + _sv.b.y*sa, nz = _sv.a.z*ca + _sv.b.z*sa;
+        pos[k] = p.x + (_sv.a.x*ca*r*flat + _sv.b.x*sa*r/flat); pos[k+1] = p.y + (_sv.a.y*ca*r*flat + _sv.b.y*sa*r/flat); pos[k+2] = p.z + (_sv.a.z*ca*r*flat + _sv.b.z*sa*r/flat);
+        nor[k] = nx; nor[k+1] = ny; nor[k+2] = nz;
+      }
+    }
+    m.geometry.attributes.position.needsUpdate = true; m.geometry.attributes.normal.needsUpdate = true;
+  }
+
+  // gold and green specks drifting around the kelp, and rising bubbles (world-space points)
+  function sparkPoints(scene, list){
+    var n = list.length, a = new Float32Array(n*3), ph = new Float32Array(n);
+    for (var i = 0; i < n; i++){ a[i*3] = list[i][0]; a[i*3+1] = list[i][1]; a[i*3+2] = list[i][2]; ph[i] = list[i][3]; }
+    var gg = new THREE.BufferGeometry();
+    gg.setAttribute("position", new THREE.Float32BufferAttribute(a, 3));
+    gg.setAttribute("aPhase", new THREE.Float32BufferAttribute(ph, 1));
+    var pts = new THREE.Points(gg, shaderMat([
+      "uniform float uT;uniform vec2 uRes;attribute float aPhase;varying float vPh;varying vec3 uwPos;varying vec3 uwN;",
+      "void main(){vec3 p=position+vec3(sin(uT*.3+aPhase*9.)*.6,sin(uT*.21+aPhase*5.)*.5,cos(uT*.25+aPhase*7.)*.6);",
+      " uwPos=p;uwN=vec3(0.,1.,0.);vPh=aPhase;vec4 mv=viewMatrix*vec4(p,1.);gl_Position=projectionMatrix*mv;",
+      " gl_PointSize=clamp(9.*uRes.y/(-mv.z*400.),1.,7.);}"
+    ].join("\n"), [
+      "uniform float uGlow;varying float vPh;",
+      "void main(){vec2 c=gl_PointCoord-.5;float a=smoothstep(.5,0.,length(c));a*=a;",
+      " float tw=.35+.65*pow(.5+.5*sin(uT*2.3+vPh*40.),3.);vec3 col=mix(vec3(1.,.78,.3),vec3(.45,1.,.55),step(.5,fract(vPh*13.)));",
+      " vec3 V=uwPos-cameraPosition;float d=length(V);",
+      " gl_FragColor=vec4(col*a*tw*exp(-SIG*d*1.4)*(.7+uGlow),1.);}"
+    ].join("\n"), { transparent:true, depthWrite:false, blending:THREE.AdditiveBlending }));
+    pts.material.uniforms.uGlow = U.uGlow;
+    pts.frustumCulled = false; scene.add(pts);
+    return pts;
+  }
+  function bubblePoints(scene, vents){
+    var per = 18, n = vents.length*per, a = new Float32Array(n*3), ph = new Float32Array(n), r2 = rnd(5);
+    for (var i = 0; i < n; i++){
+      var v = vents[Math.floor(i/per)];
+      a[i*3] = v[0] + (r2()-0.5)*0.4; a[i*3+1] = v[1]; a[i*3+2] = v[2] + (r2()-0.5)*0.4; ph[i] = r2();
+    }
+    var gg = new THREE.BufferGeometry();
+    gg.setAttribute("position", new THREE.Float32BufferAttribute(a, 3));
+    gg.setAttribute("aPhase", new THREE.Float32BufferAttribute(ph, 1));
+    var pts = new THREE.Points(gg, shaderMat([
+      "uniform float uT;uniform vec2 uRes;attribute float aPhase;varying vec3 uwPos;varying vec3 uwN;",
+      "void main(){float h=-position.y;float k=fract(uT*1.6/h+aPhase);vec3 p=position;p.y+=k*h;p.x+=sin(uT*3.+aPhase*30.)*.15*k*3.;",
+      " uwPos=p;uwN=vec3(0.,1.,0.);vec4 mv=viewMatrix*vec4(p,1.);gl_Position=projectionMatrix*mv;",
+      " gl_PointSize=clamp((5.+fract(aPhase*7.)*9.)*uRes.y/(-mv.z*400.),1.,26.)*(1.+k);}"
+    ].join("\n"), [
+      "void main(){vec2 c=gl_PointCoord-.5;float r=length(c);float ring=smoothstep(.5,.4,r)*(smoothstep(.3,.47,r)+.12);",
+      " float hl=smoothstep(.16,.0,length(c+vec2(.15,.15)));",
+      " vec3 V=uwPos-cameraPosition;float d=length(V);vec3 L=SUNC*exp(KD*min(uwPos.y,0.))*.35+vec3(.03,.08,.1);",
+      " gl_FragColor=vec4(pow(tmap(L*(ring+hl*2.)*exp(-SIG*d)*uExpo),vec3(.4545)),1.);}"
+    ].join("\n"), { transparent:true, depthWrite:false, blending:THREE.AdditiveBlending }));
+    pts.frustumCulled = false; scene.add(pts);
+    return pts;
+  }
+
+  function sstep(a, b, x){ var t = Math.max(0, Math.min(1, (x - a)/(b - a))); return t*t*(3 - 2*t); }
+  function mix(a, b, k){ return a + (b - a)*k; }
+
+  /* ====================================================================================
+     Explore: a large open ocean the shark can roam in any direction and depth
+     ==================================================================================== */
+  var X = null;
+  var EXR = 250;                                              // world radius, metres
+  function exW(x, z){
+    var n1 = fbm2(x*0.03 + 11, z*0.03 + 7);
+    return {
+      n1: n1,
+      kelp: sstep(-35, -85, x + (n1 - 0.5)*30),
+      sponge: sstep(-55, -105, z + (n1 - 0.5)*30)*(1 - sstep(-60, -110, x)*0.7),
+      drop: sstep(55, 125, x*0.8 + z*0.6 + (n1 - 0.5)*40),
+      wall: sstep(200, 250, Math.sqrt(x*x + z*z) + (n1 - 0.5)*30)
+    };
+  }
+  function exH(x, z){
+    var w = exW(x, z), n2 = fbm2(x*0.11 + 3, z*0.11 + 5), n3 = fbm2(x*0.3 + 9, z*0.3 + 1);
+    var h = -11 + (w.n1 - 0.5)*5 + (n2 - 0.5)*1.4;                                                 // coral reef plateau
+    h = mix(h, -25 + (w.n1 - 0.5)*9 + (n2 - 0.5)*2.5 + (n3 - 0.5)*0.8, w.kelp);                   // kelp basin
+    var rid = 1 - Math.abs(2*fbm2(x*0.045 + 1, z*0.045 + 2) - 1);
+    h = mix(h, -31 + rid*13 + (n2 - 0.5)*3, w.sponge);                                              // rocky sponge garden
+    h = mix(h, -168 + (w.n1 - 0.5)*28 + (n2 - 0.5)*5, w.drop);                                      // the drop-off into the trench
+    h = mix(h, -5 + (n2 - 0.5)*8, w.wall);                                                          // rim of cliffs all round
+    return h;
+  }
+  var REGIONS = {
+    reef:   ["🪸 Coral Reef", "Coral reefs cover less than 1% of the ocean floor, yet about a quarter of all ocean fish species live on them."],
+    kelp:   ["🌿 Kelp Forest", "Giant kelp is one of the fastest-growing living things: it can grow up to about 60 cm (2 ft) in a single day."],
+    sponge: ["🧽 Sponge Garden", "Sponges are animals! They have no brain or heart, and some giant barrel sponges live for hundreds of years."],
+    blue:   ["🌊 Open Blue", "The biggest manta rays can be about 7 m (23 ft) from wingtip to wingtip."],
+    drop:   ["⬇️ The Drop-off", "Red light is soaked up in the first few metres of water, so the deeper you go, the bluer everything looks."],
+    trench: ["🌌 Midnight Trench", "In the deep, most animals make their own light. It's called bioluminescence."]
+  };
+  function exRegion(x, y, z){
+    var w = exW(x, z), D = -y;
+    if (D > 110) return "trench";
+    if (w.drop > 0.5) return D > 45 ? "drop" : "blue";
+    if (w.kelp > 0.5) return "kelp";
+    if (w.sponge > 0.5) return "sponge";
+    return "reef";
+  }
+
+  function buildExplore(){
+    var scene = new THREE.Scene();
+    X = { scene:scene, cam:new THREE.PerspectiveCamera(62, 1, 0.2, 420), pos:new THREE.Vector3(6, -6, 20),
+          yaw:0.35, pitch:-0.05, roll:0, speed:1, steer:{x:0, y:0}, keys:{}, swim:false, boost:false, eaten:0,
+          seen:{}, zone:0, sharks:{}, ptrs:{}, hintUntil:0, camPos:new THREE.Vector3(), region:"" };
+    var wb = waterBits(scene); X.snow = wb.snow; X.bio = wb.bio;
+    X.sun = new THREE.DirectionalLight(0xffffff, 1); scene.add(X.sun); scene.add(X.sun.target);
+    X.hemi = new THREE.HemisphereLight(0xffffff, 0x000000, 1); scene.add(X.hemi);
+    X.lamp = new THREE.PointLight(0x66ccff, 0, 40, 1.2); scene.add(X.lamp);
+    var r = rnd(42), dmy = new THREE.Object3D(), i, j;
+
+    /* -- terrain -- */
+    var S = 520, SEG = 150, tg = new THREE.PlaneGeometry(S, S, SEG, SEG); tg.rotateX(-Math.PI/2);
+    var tp = tg.attributes.position;
+    for (i = 0; i < tp.count; i++) tp.setY(i, exH(tp.getX(i), tp.getZ(i)));
+    tg.computeVertexNormals();
+    var tn = tg.attributes.normal, cols = [];
+    var SAND = lin(0x9a8c6c), ROCK = lin(0x4f6a6a), MOSS = lin(0x4d6b4a), MUD = lin(0x3a3f4a), PINK = lin(0x6c5470);
+    for (i = 0; i < tp.count; i++){
+      var x = tp.getX(i), z = tp.getZ(i), w = exW(x, z), slope = 1 - tn.getY(i);
+      var c = SAND.clone().lerp(MOSS, w.kelp*0.75).lerp(PINK, w.sponge*0.5).lerp(MUD, w.drop);
+      c.lerp(ROCK, Math.min(1, Math.max(0, (slope - 0.12)*4)) + w.sponge*0.35 + w.wall*0.7);
+      var v = 0.85 + 0.3*fbm2(x*0.2 + 4, z*0.2 + 9);
+      cols.push(c.r*v, c.g*v, c.b*v);
+    }
+    tg.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
+    var terrain = new THREE.Mesh(tg, uwMat({ vColor:true, caus:1.0, detail:"(.78+.44*vn3(uwPos*.45))*(.9+.2*vn3(uwPos*2.1))" }));
+    terrain.frustumCulled = false; scene.add(terrain);
+
+    function onFloor(n, test, fn){
+      var placed = 0, tries = 0;
+      while (placed < n && tries < n*40){
+        tries++;
+        var x = (r()-0.5)*2*(EXR - 20), z = (r()-0.5)*2*(EXR - 20);
+        if (x*x + z*z > (EXR-15)*(EXR-15)) continue;
+        var w = exW(x, z);
+        if (!test(w, x, z)) continue;
+        fn(placed, x, exH(x, z), z, w); placed++;
+      }
+      return placed;
+    }
+
+    /* -- rocks on the floor, cliff boulders along the drop-off, and floating boulders like Abyssal Garden's -- */
+    var rockMat = uwMat({ vColor:false, color:0xffffff, caus:0.9, detail:"(.7+.5*vn3(uwPos*.9))*(.88+.24*vn3(uwPos*3.7))" });
+    var NR = 420, rocks = new THREE.InstancedMesh(rockGeometry(3, 2), rockMat, NR);
+    var rc = [lin(0x58706c), lin(0x6b7470), lin(0x4f5f66), lin(0x76705f)];
+    var nr = onFloor(300, function(w){ return w.wall < 0.6 && (r() < 0.35 + w.sponge*0.6 + w.kelp*0.3); }, function(k, x, y, z, w){
+      var big = r() < 0.15 ? 3 + r()*6 : 0.4 + r()*1.6;
+      dmy.position.set(x, y - big*0.25, z); dmy.rotation.set(r()*0.6, r()*6.3, r()*0.6);
+      dmy.scale.set(big*(0.8 + r()*0.6), big*(0.6 + r()*0.7), big*(0.8 + r()*0.6)); dmy.updateMatrix();
+      rocks.setMatrixAt(k, dmy.matrix); rocks.setColorAt(k, rc[Math.floor(r()*4)]);
+    });
+    for (i = nr; i < NR; i++){
+      // boulders: half on the drop-off rim, half floating above the kelp and sponge garden
+      var fx, fz, fy, sz;
+      if (i % 2){ var a = r()*Math.PI*2; fx = Math.cos(a)*(30 + r()*200); fz = Math.sin(a)*(30 + r()*200);
+        if (exW(fx, fz).drop < 0.15 || exW(fx, fz).drop > 0.85) { fx = 95 + (r()-0.5)*40; fz = -40 + r()*160; }
+        fy = exH(fx, fz) - 1; sz = 4 + r()*9;
+      } else { fx = -60 - r()*150; fz = (r()-0.5)*300; fy = exH(fx, fz) + 8 + r()*16; sz = 0.8 + r()*3.5; }
+      dmy.position.set(fx, fy, fz); dmy.rotation.set(r()*3, r()*6.3, r()*3);
+      dmy.scale.set(sz, sz*(0.7 + r()*0.5), sz*(0.8 + r()*0.4)); dmy.updateMatrix();
+      rocks.setMatrixAt(i, dmy.matrix); rocks.setColorAt(i, rc[i % 4]);
+    }
+    rocks.frustumCulled = false; scene.add(rocks);
+
+    /* -- kelp: tall columns of leaves reaching for the light -- */
+    var cols2 = [];
+    onFloor(120, function(w){ return w.kelp > 0.55 && w.wall < 0.3; }, function(k, x, y, z){
+      // kelp grows in thick stands: a few stalks around each holdfast patch
+      var nk = 2 + Math.floor(r()*5);
+      for (var kk = 0; kk < nk; kk++){
+        var kx = x + (r()-0.5)*7, kz = z + (r()-0.5)*7, kw = exW(kx, kz);
+        if (kw.kelp < 0.45 || kw.wall > 0.3) continue;
+        cols2.push([kx, exH(kx, kz), kz, -1.5 - r()*5, r()*6.28]);
+      }
+    });
+    onFloor(26, function(w){ return w.sponge > 0.6 && w.wall < 0.3 && r() < 0.5; }, function(k, x, y, z){ cols2.push([x, y, z, -4 - r()*8, r()*6.28]); });
+    var leafCount = 0;
+    cols2.forEach(function(cl){ leafCount += Math.floor((cl[3] - cl[1])/0.42); });
+    var leafGeo = leafGeometry(), lk = new Float32Array(leafCount*2);
+    var leafMat = uwMat({ k2:true, double:true, caus:0.55, trans:0.9, detail:"(.55+.65*vUv.x)",
+      local:"p.z+=sin(uT*3.+aK.x*7.+p.x*4.)*.07*p.x;",
+      world:"float hb=max(0.,w.y-aK.y);float sw=hb*hb/(hb+8.);w.x+=sin(uT*.55+aK.x+w.y*.06)*.11*sw;w.z+=cos(uT*.45+aK.x*1.7+w.y*.05)*.09*sw;" });
+    var leaves = new THREE.InstancedMesh(leafGeo, leafMat, leafCount);
+    var stipeGeo = new THREE.CylinderGeometry(0.05, 0.08, 1, 5, 14); stipeGeo.translate(0, 0.5, 0);
+    var sk = new Float32Array(cols2.length*2);
+    var stipes = new THREE.InstancedMesh(stipeGeo, uwMat({ k2:true, color:0x3f4a22, caus:0.4,
+      world:"float hb=max(0.,w.y-aK.y);float sw=hb*hb/(hb+8.);w.x+=sin(uT*.55+aK.x+w.y*.06)*.11*sw;w.z+=cos(uT*.45+aK.x*1.7+w.y*.05)*.09*sw;" }), cols2.length);
+    var li = 0;
+    cols2.forEach(function(cl, ci){
+      var h = cl[3] - cl[1];
+      dmy.position.set(cl[0], cl[1], cl[2]); dmy.rotation.set(0, 0, 0); dmy.scale.set(1, h, 1); dmy.updateMatrix();
+      stipes.setMatrixAt(ci, dmy.matrix); sk[ci*2] = cl[4]; sk[ci*2+1] = cl[1];
+      var n = Math.floor(h/0.42);
+      for (var q = 0; q < n; q++){
+        var yy = cl[1] + 0.3 + q*0.42, top = q/n;
+        dmy.position.set(cl[0], yy, cl[2]);
+        dmy.rotation.set(0, q*2.39996 + cl[4], 0.55 + r()*0.45 + top*0.3);
+        var L = (1.1 + r()*1.1)*(1 - top*0.3);
+        dmy.scale.set(L, L*(0.9 + r()*0.5), 1); dmy.updateMatrix();
+        leaves.setMatrixAt(li, dmy.matrix);
+        var col = new THREE.Color().setHSL(0.19 + r()*0.08, 0.55 + r()*0.2, 0.2 + r()*0.13 + top*0.06).convertSRGBToLinear();
+        leaves.setColorAt(li, col);
+        lk[li*2] = cl[4]; lk[li*2+1] = cl[1]; li++;
+      }
+    });
+    leafGeo.setAttribute("aK", new THREE.InstancedBufferAttribute(lk, 2));
+    stipeGeo.setAttribute("aK", new THREE.InstancedBufferAttribute(sk, 2));
+    leaves.count = li; leaves.frustumCulled = false; stipes.frustumCulled = false;
+    X.kelpLod = { leaves:leaves, stipes:stipes, starts:[], n:cols2.length, total:li };
+    (function(){ var acc = 0; cols2.forEach(function(cl){ X.kelpLod.starts.push(acc); acc += Math.floor((cl[3] - cl[1])/0.42); }); })();
+    scene.add(leaves); scene.add(stipes);
+    X.kelpCols = cols2;
+
+    /* -- sea grass on the reef, magenta ground cover in the sponge garden -- */
+    var NG = 1500, bg2 = bladeGeometry(0.28), gph = new Float32Array(NG);
+    var grass = new THREE.InstancedMesh(bg2, uwMat({ phase:true, double:true, caus:0.5, trans:0.5,
+      local:"float uwh=p.y*p.y;p.x+=sin(uT*.9+aPhase+p.y*1.7)*.45*uwh;p.z+=cos(uT*.7+aPhase*1.3)*.25*uwh;" }), NG);
+    var ng = onFloor(NG, function(w){ return w.wall < 0.4 && w.drop < 0.3 && (w.sponge > 0.5 || r() < 0.5); }, function(k, x, y, z, w){
+      var pinkK = w.sponge > 0.5, cx = x, cz = z;
+      for (var q = 0; q < 6 && k*6 + q < NG; q++){ /* tufts come in clumps */ }
+      var gh = pinkK ? 0.25 + r()*0.45 : (r() < 0.2 ? 1.2 + r()*1.8 : 0.4 + r()*0.8);
+      dmy.position.set(cx, y - 0.05, cz); dmy.rotation.set((r()-0.5)*0.5, r()*6.3, (r()-0.5)*0.5);
+      dmy.scale.set(pinkK ? 0.5 : 1, gh, 1); dmy.updateMatrix(); grass.setMatrixAt(k, dmy.matrix);
+      gph[k] = r()*6.28;
+      grass.setColorAt(k, pinkK ? new THREE.Color().setHSL(0.83 + r()*0.08, 0.6, 0.45 + r()*0.15).convertSRGBToLinear()
+                                : new THREE.Color().setHSL(0.22 + r()*0.1, 0.5, 0.3 + r()*0.1).convertSRGBToLinear());
+    });
+    bg2.setAttribute("aPhase", new THREE.InstancedBufferAttribute(gph, 1));
+    grass.count = ng; grass.frustumCulled = false; scene.add(grass);
+
+    /* -- coral on the reef: brain domes and branching coral; sponges and sea fans in the garden -- */
+    var domeGeo = new THREE.SphereGeometry(1, 16, 9, 0, Math.PI*2, 0, Math.PI/2), dpp = domeGeo.attributes.position;
+    for (i = 0; i < dpp.count; i++){
+      var dx = dpp.getX(i), dyv = dpp.getY(i), dz = dpp.getZ(i), kk = 1 + 0.06*Math.sin(dx*14)*Math.sin(dz*14) + 0.08*fbm2(dx*3 + 1, dz*3 + 2);
+      dpp.setXYZ(i, dx*kk, dyv*kk, dz*kk);
+    }
+    domeGeo.computeVertexNormals();
+    var coralCols = [0xff8a5c, 0xc77dff, 0xffd166, 0xff6fa5, 0x7be0ad, 0xf4a261, 0x9fd3ff].map(lin);
+    var domes = new THREE.InstancedMesh(domeGeo, uwMat({ caus:0.9, detail:"(.75+.5*vn3(vLoc*14.))" }), 220);
+    var nd = onFloor(220, function(w){ return w.kelp < 0.3 && w.sponge < 0.3 && w.drop < 0.2 && w.wall < 0.2; }, function(k, x, y, z){
+      var s2 = 0.4 + r()*1.4; dmy.position.set(x, y - 0.15, z); dmy.rotation.set(0, r()*6.3, 0);
+      dmy.scale.set(s2, s2*(0.5 + r()*0.4), s2); dmy.updateMatrix(); domes.setMatrixAt(k, dmy.matrix);
+      domes.setColorAt(k, coralCols[Math.floor(r()*coralCols.length)]);
+    });
+    domes.count = nd; domes.frustumCulled = false; scene.add(domes);
+    var branches = new THREE.InstancedMesh(branchCoralGeometry(9), uwMat({ caus:0.8 }), 260);
+    var nb = onFloor(260, function(w){ return w.kelp < 0.35 && w.drop < 0.25 && w.wall < 0.2; }, function(k, x, y, z){
+      var s3 = 0.6 + r()*1.3; dmy.position.set(x, y - 0.1, z); dmy.rotation.set(0, r()*6.3, 0); dmy.scale.setScalar(s3); dmy.updateMatrix();
+      branches.setMatrixAt(k, dmy.matrix); branches.setColorAt(k, coralCols[Math.floor(r()*coralCols.length)]);
+    });
+    branches.count = nb; branches.frustumCulled = false; scene.add(branches);
+    var sponges = new THREE.InstancedMesh(spongeGeometry(), uwMat({ caus:0.8, detail:"(.65+.55*vn3(vLoc*11.))*(.85+.3*vn3(vLoc*31.))" }), 160);
+    var spCols = [0x6f5aa8, 0x9a6b3c, 0xb38b5d, 0x7d4f8c, 0xa35f4a].map(lin);
+    var ns = onFloor(160, function(w){ return w.sponge > 0.45 && w.wall < 0.3; }, function(k, x, y, z){
+      var s4 = 0.6 + r()*1.4; dmy.position.set(x, y - 0.1, z); dmy.rotation.set((r()-0.5)*0.3, r()*6.3, (r()-0.5)*0.3);
+      dmy.scale.set(s4, s4*(0.8 + r()*0.6), s4); dmy.updateMatrix(); sponges.setMatrixAt(k, dmy.matrix);
+      sponges.setColorAt(k, spCols[Math.floor(r()*spCols.length)]);
+    });
+    sponges.count = ns; sponges.frustumCulled = false; scene.add(sponges);
+    var fanGeo = new THREE.PlaneGeometry(1.6, 1.4, 4, 4); fanGeo.translate(0, 0.7, 0);
+    var fans = new THREE.InstancedMesh(fanGeo, uwMat({ double:true, caus:0.6, trans:0.6, phase:false,
+      local:"p.z+=sin(uT*1.1+p.y*1.5+p.x)*.06*p.y;",
+      discard:"vec2 fu=vec2(vUv.x-.5,vUv.y*1.05+.02);float fr=length(fu);float fa=atan(fu.x,fu.y);" +
+              "float l1=abs(fract(fa*5.5+sin(fr*13.)*.2)-.5);float l2=abs(fract(fr*11.+fa*1.7)-.5);" +
+              "if(min(l1,l2)>.1||fr>.98||vUv.y<.01)discard;" }), 140);
+    var fanCols = [0xd94a8c, 0xff7a3d, 0x9b5de5, 0xf15bb5].map(lin);
+    var nf = onFloor(140, function(w){ return (w.sponge > 0.4 || (w.kelp < 0.3 && w.drop < 0.2 && r() < 0.3)) && w.wall < 0.3; }, function(k, x, y, z){
+      var s5 = 0.8 + r()*1.4; dmy.position.set(x, y - 0.05, z); dmy.rotation.set(0, r()*6.3, 0); dmy.scale.setScalar(s5); dmy.updateMatrix();
+      fans.setMatrixAt(k, dmy.matrix); fans.setColorAt(k, fanCols[Math.floor(r()*fanCols.length)]);
+    });
+    fans.count = nf; fans.frustumCulled = false; scene.add(fans);
+
+    /* -- sparkles among the kelp, bubbles rising from the floor -- */
+    var sp = [];
+    for (i = 0; i < 1600; i++){
+      var cl = cols2[Math.floor(r()*cols2.length)];
+      sp.push([cl[0] + (r()-0.5)*5, cl[1] + r()*(cl[3] - cl[1]), cl[2] + (r()-0.5)*5, r()]);
+    }
+    for (i = 0; i < 400; i++){ var tx = (r()-0.5)*400, tz = (r()-0.5)*400; if (exW(tx, tz).drop > 0.6) sp.push([tx, -60 - r()*110, tz, r()]); }
+    sparkPoints(scene, sp);
+    var vents = [];
+    onFloor(26, function(w){ return w.wall < 0.3; }, function(k, x, y, z){ vents.push([x, y, z]); });
+    bubblePoints(scene, vents);
+
+    /* -- life: fish schools, snack fish, mantas, jellies, a sea snake, dolphins -- */
+    var fg = fishGeometry(), schoolN = 150, sph = new Float32Array(schoolN);
+    for (i = 0; i < schoolN; i++) sph[i] = r()*6.28;
+    var sgeo = fg.clone(); sgeo.setAttribute("aPhase", new THREE.InstancedBufferAttribute(sph, 1));
+    X.school = new THREE.InstancedMesh(sgeo, uwMat({ color:0xaab9c6, phase:true, double:true, caus:0.6, local:FISH_WIGGLE,
+      emit:"vec3(.06,.08,.1)*pow(max(dot(reflect(normalize(uwPos-cameraPosition),normalize(uwN)),uSun),0.),6.)*SUNC*exp(KD*min(uwPos.y,0.))" }), schoolN);
+    X.school.frustumCulled = false; scene.add(X.school);
+    X.boids = []; X.schoolCenters = [[-20, -8, -10], [-110, -14, 40], [60, -22, 90]];
+    for (i = 0; i < schoolN; i++){
+      var sc = X.schoolCenters[i % 3];
+      X.boids.push({ s:i % 3, p:new THREE.Vector3(sc[0] + (r()-0.5)*8, sc[1] + (r()-0.5)*4, sc[2] + (r()-0.5)*8), v:new THREE.Vector3(r()-0.5, 0, r()-0.5) });
+    }
+    var snackN = 34, snph = new Float32Array(snackN);
+    for (i = 0; i < snackN; i++) snph[i] = r()*6.28;
+    var sngeo = fg.clone(); sngeo.setAttribute("aPhase", new THREE.InstancedBufferAttribute(snph, 1));
+    X.snack = new THREE.InstancedMesh(sngeo, uwMat({ phase:true, double:true, caus:0.6, local:FISH_WIGGLE }), snackN);
+    X.snack.frustumCulled = false; scene.add(X.snack);
+    X.snacks = [];
+    for (i = 0; i < snackN; i++) X.snacks.push({ p:new THREE.Vector3(), v:new THREE.Vector3(), col:new THREE.Color(), s:0.3, alive:false, wob:r()*9 });
+
+    var mg = mantaGeometry(); mg.setAttribute("aPhase", new THREE.InstancedBufferAttribute(new Float32Array([0, 2.1, 4.2, 1.1]), 1));
+    X.mantas = new THREE.InstancedMesh(mg, uwMat({ color:0x2b3440, phase:true, double:true, caus:0.5, local:MANTA_FLAP }), 4);
+    X.mantas.frustumCulled = false; scene.add(X.mantas);
+
+    var jg = jellyGeometry(), JN = 46, jph = new Float32Array(JN);
+    for (i = 0; i < JN; i++) jph[i] = r()*6.28;
+    jg.setAttribute("aPhase", new THREE.InstancedBufferAttribute(jph, 1));
+    X.jellies = new THREE.InstancedMesh(jg, jellyMat(), JN); X.jellies.frustumCulled = false; scene.add(X.jellies);
+    X.jl = [];
+    for (i = 0; i < JN; i++){
+      var ja = r()*Math.PI*2, jr = 120 + r()*100, jx = Math.cos(ja)*jr*0.7 + 60, jz = Math.sin(ja)*jr*0.7 + 40;
+      if (exW(jx, jz).drop < 0.5){ jx = 120 + r()*80; jz = -40 + r()*160; }
+      var jy = Math.min(-8, exH(jx, jz) + 8 + r()*Math.max(4, -exH(jx, jz) - 20));
+      X.jl.push({ x:jx, y:jy, z:jz, s:0.5 + r()*0.8, c:new THREE.Color().setHSL(r() < 0.5 ? 0.9 : 0.55, 0.8, 0.6).convertSRGBToLinear() });
+      X.jellies.setColorAt(i, X.jl[i].c);
+    }
+    X.snakeM = makeSnake(26); scene.add(X.snakeM);
+    X.dolphins = [dolphinGroup(), dolphinGroup()];
+    X.dolphins.forEach(function(d){ scene.add(d); });
+
+    X.shadow = null;
+    buildHud();
+  }
+
+  /* ---------- the explore HUD: back, where you are, snacks, change shark, how to swim ---------- */
+  function buildHud(){
+    var wrap = document.getElementById("wrap");
+    var hud = document.createElement("div"); hud.id = "exHud";
+    hud.style.cssText = "position:absolute;inset:0;pointer-events:none;z-index:6;display:none;font-family:inherit;";
+    var pill = "background:rgba(4,20,36,.72);backdrop-filter:blur(6px);border:1.5px solid rgba(53,224,200,.35);border-radius:999px;padding:7px 13px;color:#DFF7F2;font-weight:800;font-size:13px;";
+    hud.innerHTML =
+      '<button id="exBack" style="' + pill + 'position:absolute;top:calc(8px + env(safe-area-inset-top));left:10px;pointer-events:auto;cursor:pointer">← Back</button>' +
+      '<div id="exWhere" style="' + pill + 'position:absolute;top:calc(8px + env(safe-area-inset-top));left:50%;transform:translateX(-50%)"></div>' +
+      '<div id="exAte" style="' + pill + 'position:absolute;top:calc(52px + env(safe-area-inset-top));left:10px">🐟 0</div>' +
+      '<button id="exShark" style="' + pill + 'position:absolute;bottom:calc(14px + env(safe-area-inset-bottom));right:10px;pointer-events:auto;cursor:pointer">🦈 Change shark</button>' +
+      '<button id="exQual" style="' + pill + 'position:absolute;bottom:calc(14px + env(safe-area-inset-bottom));left:10px;pointer-events:auto;cursor:pointer">✨ Auto</button>' +
+      '<div id="exHint" style="position:absolute;bottom:calc(64px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;color:#DFF7F2;font-weight:800;font-size:14px;text-shadow:0 2px 6px rgba(0,0,0,.6);transition:opacity 1s">' +
+      'Hold and slide to swim and steer · second finger to go faster<br/><span style="font-size:12px;opacity:.8">Keyboard: W A S D to swim, E / Q up and down, Shift faster</span></div>' +
+      '<div id="exBanner" style="position:absolute;top:22%;left:0;right:0;text-align:center;color:#fff;font-weight:900;font-size:30px;letter-spacing:.04em;text-shadow:0 3px 14px rgba(0,30,50,.8);opacity:0;transition:opacity 1.2s"></div>';
+    wrap.appendChild(hud);
+    X.hud = hud;
+    document.getElementById("exBack").addEventListener("click", function(e){ e.stopPropagation(); explore(false); });
+    document.getElementById("exShark").addEventListener("click", function(e){
+      e.stopPropagation(); X.zone = (X.zone + 1) % ZONES.length; setExShark();
+      if (typeof showToast === "function") showToast("🦈 " + ZONES[X.zone].sharkName, ZONES[X.zone].nickname + " · " + ZONES[X.zone].size, false);
+    });
+    document.getElementById("exQual").addEventListener("click", function(e){
+      e.stopPropagation(); var order = ["auto", "low", "medium", "high"];
+      setQuality(order[(order.indexOf(quality) + 1) % order.length]);
+      if (typeof showToast === "function") showToast("✨ Detail: " + document.getElementById("exQual").textContent.slice(2), quality === "auto" ? "Picked for this device (" + qName() + ")" : "Lower it if the ocean feels slow", false);
+    });
+    applyQuality();
+    var cv = R.canvas;
+    function local(e){ var b = cv.getBoundingClientRect(); return { x:e.clientX - b.left, y:e.clientY - b.top, w:b.width, h:b.height }; }
+    cv.addEventListener("pointerdown", function(e){
+      if (!X.on) return;
+      var l = local(e); X.ptrs[e.pointerId] = { sx:l.x, sy:l.y, x:l.x, y:l.y };
+      try { cv.setPointerCapture(e.pointerId); } catch(err){}
+      e.preventDefault();
+    });
+    cv.addEventListener("pointermove", function(e){
+      var p = X && X.ptrs[e.pointerId]; if (!p) return;
+      var l = local(e); p.x = l.x; p.y = l.y;
+    });
+    function up(e){ if (X && X.ptrs[e.pointerId]) delete X.ptrs[e.pointerId]; }
+    cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+    cv.style.touchAction = "none";
+    window.addEventListener("keydown", function(e){ if (X && X.on){ X.keys[e.code] = true; if (/Arrow|Space/.test(e.code)) e.preventDefault(); } });
+    window.addEventListener("keyup", function(e){ if (X) X.keys[e.code] = false; });
+  }
+
+  function setExShark(){
+    Object.keys(X.sharks).forEach(function(id){ X.sharks[id].visible = false; });
+    var spec = ZONES[X.zone];
+    if (!X.sharks[spec.id]){
+      var holder = makeSharkHolder(spec); X.scene.add(holder); X.sharks[spec.id] = holder;
+    }
+    X.shark = X.sharks[spec.id]; X.shark.visible = true;
+    X.L = Math.max(2, Math.min(9, spec.len/38));                 // body length in metres for the camera and the bite
+    X.shark.scale.setScalar(X.L/2);
+  }
+
+  function explore(on){
+    if (on){
+      if (!active()){ set("realistic"); if (!active()) return false; }
+      if (!X) buildExplore();
+      X.on = true;
+      X.zone = Math.min(typeof g !== "undefined" ? g.zone : 0, ZONES.length - 1);
+      setExShark();
+      X.hud.style.display = "block";
+      ["titleScr", "lookBtn"].forEach(function(id){ var el = document.getElementById(id); if (el) el.classList.add("hidden"); });
+      var lb = document.getElementById("lookBtn"); if (lb) lb.style.display = "none";
+      document.getElementById("cv").style.visibility = "hidden";
+      X.hintUntil = performance.now() + 9000; document.getElementById("exHint").style.opacity = 1;
+      X.camPos.copy(X.pos).add(new THREE.Vector3(0, 2, 8));
+      X.last = 0;
+    } else if (X){
+      X.on = false; X.ptrs = {};
+      X.hud.style.display = "none";
+      var ts = document.getElementById("titleScr"); if (ts) ts.classList.remove("hidden");
+      var lb2 = document.getElementById("lookBtn"); if (lb2) lb2.style.display = "";
+      document.getElementById("cv").style.visibility = "";
+      U.uCamRot.value.identity(); U.uBoxOff.value.set(0.5, 0.5, 0.9);
+    }
+    return true;
+  }
+
+  var _v = null;
+  function exFrame(now){
+    if (!X || !X.on) return;
+    if (!_v) _v = { f:new THREE.Vector3(), t:new THREE.Vector3(), a:new THREE.Vector3(), b:new THREE.Vector3(), X:new THREE.Vector3(1,0,0), m:new THREE.Matrix4() };
+    var dt = X.last ? Math.min(0.05, (now - X.last)/1000) : 0.016; X.last = now;
+    var t = now/1000, i, W = R.canvas.clientWidth || window.innerWidth, H = R.canvas.clientHeight || window.innerHeight;
+
+    /* input: pointers (first steers, second boosts) and keys */
+    var ids = Object.keys(X.ptrs), sx = 0, sy = 0, swim = false, boost = false;
+    if (ids.length){
+      var p0 = X.ptrs[ids[0]], k = Math.min(W, H)*0.22;
+      sx = Math.max(-1, Math.min(1, (p0.x - p0.sx)/k)); sy = Math.max(-1, Math.min(1, (p0.y - p0.sy)/k));
+      swim = true; boost = ids.length > 1;
+    }
+    var K = X.keys;
+    if (K.KeyW || K.ArrowUp){ swim = true; }
+    if (K.KeyA || K.ArrowLeft) sx = -1;
+    if (K.KeyD || K.ArrowRight) sx = 1;
+    if (K.KeyE || K.Space) sy = -1;
+    if (K.KeyQ || K.KeyC) sy = 1;
+    if (K.ShiftLeft || K.ShiftRight) boost = true;
+    var back = K.KeyS || K.ArrowDown;
+    if (swim || back || sx || sy){ if (X.hintUntil > now + 2500) X.hintUntil = now + 2500; }
+    if (now > X.hintUntil) document.getElementById("exHint").style.opacity = 0;
+
+    /* swimming: turn, pitch and glide; always drifting a little so it never stands still */
+    var turn = -sx*1.5;
+    X.yaw += turn*dt;
+    var wantPitch = Math.max(-1.05, Math.min(1.05, X.pitch - sy*1.2*dt*1.4));
+    X.pitch = sy ? wantPitch : X.pitch*(1 - Math.min(1, dt*0.8));
+    X.roll += ((-turn*0.35) - X.roll)*Math.min(1, dt*4);
+    var size = Math.sqrt(X.L/2.2);
+    var target = back ? 0.2 : (swim ? (boost ? 11 : 6) : 1.2)*size;
+    X.speed += (target - X.speed)*Math.min(1, dt*(swim ? 1.8 : 1.2));
+    var cp = Math.cos(X.pitch);
+    var f = _v.f.set(-Math.sin(X.yaw)*cp, Math.sin(X.pitch), -Math.cos(X.yaw)*cp);
+    X.pos.addScaledVector(f, X.speed*dt);
+    // the seabed and cliffs are solid; the surface is the ceiling; the rim keeps you in
+    var floor = exH(X.pos.x, X.pos.z) + X.L*0.22 + 0.5;
+    if (X.pos.y < floor){ X.pos.y = floor; if (X.pitch < 0) X.pitch *= 0.85; }
+    if (X.pos.y > -1.0){ X.pos.y = -1.0; if (X.pitch > 0) X.pitch *= 0.85; }
+    var rr = Math.sqrt(X.pos.x*X.pos.x + X.pos.z*X.pos.z);
+    if (rr > EXR - 12){ X.pos.x *= (EXR - 12)/rr; X.pos.z *= (EXR - 12)/rr; }
+
+    /* the shark model */
+    var sh = X.shark, m3 = sh.userData.model;
+    sh.position.copy(X.pos); sh.rotation.set(0, X.yaw + Math.PI/2, 0);
+    m3.rotation.set(X.roll, 0, X.pitch);
+    var beat = 6 + X.speed*1.2;
+    X.tailPh = (X.tailPh || 0) + dt*beat;
+    if (m3.userData.swim) m3.userData.swim(X.tailPh, 0.8 + 0.12*X.speed);
+
+    /* chase camera, a little above and behind, kept out of the rock */
+    var D = X.L*2.1 + 3, hgt = X.L*0.22 + 0.3, side = 0.42;
+    var want = _v.t.set(X.pos.x + Math.sin(X.yaw + side)*D*Math.cos(X.pitch*0.6), X.pos.y + hgt - Math.sin(X.pitch*0.6)*D, X.pos.z + Math.cos(X.yaw + side)*D*Math.cos(X.pitch*0.6));
+    var cfloor = exH(want.x, want.z) + 1.2;
+    if (want.y < cfloor) want.y = cfloor;
+    if (want.y > -0.4) want.y = -0.4;
+    X.camPos.lerp(want, 1 - Math.exp(-dt*4));
+    var cam = X.cam;
+    cam.position.copy(X.camPos);
+    cam.lookAt(_v.a.copy(X.pos).addScaledVector(f, X.L*0.9).add(_v.b.set(0, X.L*0.55 + 0.6, 0)));
+    if (X.camOv) X.camOv(cam, X);
+    cam.aspect = W/H; cam.fov = W < H ? 74 : 60; cam.updateProjectionMatrix(); cam.updateMatrixWorld();
+    U.uCamRot.value.setFromMatrix4(cam.matrixWorld);
+    U.uTanH.value = Math.tan(cam.fov*Math.PI/360); U.uAsp.value = W/H;
+    U.uBoxOff.value.set(0.5, 0.5, 0.5);
+
+    /* fewer kelp stalks on lower detail */
+    var kl = X.kelpLod, kf = { low:0.45, medium:0.75, high:1 }[qName()] || 1, kn = Math.floor(kl.n*kf);
+    kl.stipes.count = kn; kl.leaves.count = kn >= kl.n ? kl.total : kl.starts[kn];
+
+    /* light for this depth */
+    var y = Math.min(X.camPos.y, -0.5), Dm = -y, fill = Math.max(0, Math.min(1, (Dm - 45)/135));
+    X.sun.color.setRGB(SUNC[0]*Math.exp(KD[0]*y)*0.55, SUNC[1]*Math.exp(KD[1]*y)*0.55, SUNC[2]*Math.exp(KD[2]*y)*0.55);
+    X.sun.position.copy(U.uSun.value).multiplyScalar(30).add(X.pos); X.sun.target.position.copy(X.pos);
+    X.hemi.color.setRGB(WCOL[0]*Math.exp(KD[0]*y)*0.9 + 0.05*fill, WCOL[1]*Math.exp(KD[1]*y)*0.9 + 0.14*fill, WCOL[2]*Math.exp(KD[2]*y)*0.9 + 0.24*fill);
+    X.hemi.groundColor.setRGB(0.02 + 0.01*fill, 0.05 + 0.03*fill, 0.08 + 0.05*fill);
+    X.lamp.intensity = 1.1*fill; U.uLampI.value = 0.35*fill; X.lamp.position.set(X.camPos.x, X.camPos.y + 2, X.camPos.z);
+    U.uT.value = t % 600;
+    U.uRays.value = 0.54*Math.max(0, Math.min(1, 1 - (Dm - 10)/90));
+    U.uBio.value = Math.max(0, Math.min(1, (Dm - 70)/60));
+    U.uGlow.value = Math.max(0, Math.min(1, (Dm - 40)/80));
+    U.uFill.value.set(0.004*fill, 0.012*fill, 0.024*fill);
+    U.uExpo.value = EXPO*(1 + 2.2*fill);
+    stats.D = Dm; stats.rays = U.uRays.value/0.54; stats.fill = fill;
+
+    /* where you are */
+    var reg = exRegion(X.pos.x, X.pos.y, X.pos.z);
+    document.getElementById("exWhere").textContent = REGIONS[reg][0] + " · " + Math.round(-X.pos.y) + " m";
+    if (reg !== X.region){
+      X.region = reg;
+      var bn = document.getElementById("exBanner"); bn.textContent = REGIONS[reg][0]; bn.style.opacity = 1;
+      clearTimeout(X.bannerT); X.bannerT = setTimeout(function(){ bn.style.opacity = 0; }, 2200);
+      if (!X.seen[reg]){ X.seen[reg] = true; if (typeof showToast === "function" && Object.keys(X.seen).length > 1) showToast(REGIONS[reg][0], REGIONS[reg][1], false); }
+    }
+
+    /* schools */
+    var B = X.boids, dmy = R.dmy, sep = _v.a, tmp = _v.b, j;
+    for (i = 0; i < B.length; i++){
+      var b = B[i], sc = X.schoolCenters[b.s];
+      var tgt = tmp.set(sc[0] + 14*Math.sin(t*0.07 + b.s*2), sc[1] + 2*Math.sin(t*0.11 + b.s), sc[2] + 14*Math.cos(t*0.09 + b.s*3));
+      tgt.sub(b.p).multiplyScalar(0.08);
+      sep.set(0, 0, 0);
+      for (j = Math.max(0, i - 6); j < Math.min(B.length, i + 7); j += 3){
+        if (j === i) continue; var o = B[j], dd = b.p.distanceToSquared(o.p);
+        if (dd < 1.2) sep.add(_v.f.copy(b.p).sub(o.p).divideScalar(dd + 0.05));
+      }
+      var away = b.p.distanceToSquared(X.pos);
+      if (away < 36) tgt.add(_v.f.copy(b.p).sub(X.pos).multiplyScalar(2.5/(away + 1)));
+      b.v.addScaledVector(tgt, dt).addScaledVector(sep, dt*1.4);
+      var spd = b.v.length(), wantS = Math.max(1.4, Math.min(away < 36 ? 6 : 3.2, spd)); b.v.multiplyScalar(wantS/(spd || 1));
+      b.p.addScaledVector(b.v, dt);
+      var fl = exH(b.p.x, b.p.z) + 1; if (b.p.y < fl) b.p.y = fl;
+      dmy.position.copy(b.p); dmy.rotation.set(0,0,0); dmy.quaternion.setFromUnitVectors(_v.X, _v.f.copy(b.v).normalize()); dmy.scale.setScalar(0.2);
+      dmy.updateMatrix(); X.school.setMatrixAt(i, dmy.matrix);
+    }
+    f = _v.f.set(-Math.sin(X.yaw)*cp, Math.sin(X.pitch), -Math.cos(X.yaw)*cp);
+    X.school.instanceMatrix.needsUpdate = true;
+
+    /* snack fish around you: chase and chomp them */
+    var mouth = _v.t.copy(X.pos).addScaledVector(f, X.L*0.42), bite = X.L*0.32 + 0.35;
+    var fc = ZONES[X.zone].fishColors || ["#FFD166", "#7BE0AD", "#FF8A5C"];
+    for (i = 0; i < X.snacks.length; i++){
+      var s = X.snacks[i];
+      var dist2 = s.p.distanceToSquared(X.pos);
+      if (!s.alive || dist2 > 75*75){
+        // a new fish somewhere ahead-ish, 20 to 50 m away
+        var ang = X.yaw + (Math.random() - 0.5)*2.6, rad = 20 + Math.random()*30;
+        s.p.set(X.pos.x - Math.sin(ang)*rad, 0, X.pos.z - Math.cos(ang)*rad);
+        var fh = exH(s.p.x, s.p.z); s.p.y = Math.min(-1.5, Math.max(fh + 1.2, X.pos.y + (Math.random() - 0.5)*8));
+        s.v.set(Math.random() - 0.5, 0, Math.random() - 0.5).normalize().multiplyScalar(1.4);
+        s.col.set(fc[Math.floor(Math.random()*fc.length)]).convertSRGBToLinear(); X.snack.setColorAt(i, s.col);
+        s.s = 0.22 + Math.random()*0.16; s.alive = true;
+      }
+      if (dist2 < 49){ s.v.addScaledVector(_v.a.copy(s.p).sub(X.pos).normalize(), dt*5); }
+      else s.v.add(_v.a.set(Math.sin(t*0.7 + s.wob), Math.sin(t*0.5 + s.wob*2)*0.3, Math.cos(t*0.6 + s.wob)).multiplyScalar(dt*0.8));
+      var vs = s.v.length(), cap = dist2 < 49 ? 3.6*size : 1.6; if (vs > cap) s.v.multiplyScalar(cap/vs);
+      s.p.addScaledVector(s.v, dt);
+      var sf = exH(s.p.x, s.p.z) + 0.8; if (s.p.y < sf){ s.p.y = sf; s.v.y = Math.abs(s.v.y); } if (s.p.y > -1.2){ s.p.y = -1.2; s.v.y = -Math.abs(s.v.y); }
+      if (s.p.distanceToSquared(mouth) < bite*bite){
+        s.alive = false; X.eaten++; document.getElementById("exAte").textContent = "🐟 " + X.eaten;
+        if (typeof Sound !== "undefined") Sound.eat();
+      }
+      dmy.position.copy(s.p); dmy.rotation.set(0,0,0); dmy.quaternion.setFromUnitVectors(_v.X, _v.a.copy(s.v).normalize());
+      dmy.scale.setScalar(s.alive ? s.s : 0.0001); dmy.updateMatrix(); X.snack.setMatrixAt(i, dmy.matrix);
+    }
+    X.snack.instanceMatrix.needsUpdate = true; if (X.snack.instanceColor) X.snack.instanceColor.needsUpdate = true;
+
+    /* mantas circling over the open blue, jellies drifting in the deep */
+    for (i = 0; i < 4; i++){
+      var ma = t*0.045 + i*1.6, mr = 60 + i*18;
+      dmy.position.set(100 + Math.cos(ma)*mr, -14 - i*7 + Math.sin(t*0.3 + i)*2, 40 + Math.sin(ma)*mr);
+      dmy.rotation.set(Math.sin(t*0.4 + i)*0.1, -ma, 0.25); dmy.scale.setScalar(1.6 + (i % 2)*0.9); dmy.updateMatrix();
+      X.mantas.setMatrixAt(i, dmy.matrix);
+    }
+    X.mantas.instanceMatrix.needsUpdate = true;
+    for (i = 0; i < X.jl.length; i++){
+      var jj = X.jl[i];
+      dmy.position.set(jj.x + Math.sin(t*0.2 + i)*2, jj.y + Math.sin(t*0.35 + i*1.3)*1.5, jj.z + Math.cos(t*0.17 + i)*2);
+      dmy.rotation.set(Math.sin(t*0.3 + i)*0.15, i, Math.cos(t*0.25 + i)*0.15); dmy.scale.setScalar(jj.s); dmy.updateMatrix();
+      X.jellies.setMatrixAt(i, dmy.matrix);
+    }
+    X.jellies.instanceMatrix.needsUpdate = true;
+    // a banded sea snake winding over the reef
+    var pts = [], sa0 = t*0.06;
+    for (i = 0; i < 26; i++){
+      var sa = sa0 - i*0.012, sxp = 18 + Math.cos(sa)*22, szp = -25 + Math.sin(sa*1.3)*18;
+      pts.push({ x:sxp + Math.sin(t*4 - i*0.55)*0.18*Math.min(i, 6)/6, y:exH(sxp, szp) + 1.4 + Math.sin(sa*3)*0.6, z:szp + Math.cos(t*4 - i*0.55)*0.18*Math.min(i, 6)/6 });
+    }
+    setSnake(X.snakeM, pts, function(k){ return 0.05 + 0.07*Math.sin(Math.PI*Math.min(1, (k + 1.5)/24)); });
+    // two dolphins playing near the drop-off
+    X.dolphins.forEach(function(d, k){
+      var da = t*0.12 + k*0.6, dr = 30;
+      d.position.set(85 + Math.cos(da)*dr, -7 - k*2 + Math.sin(t*0.9 + k)*1.5, 10 + Math.sin(da)*dr);
+      d.rotation.set(0, -da - Math.PI, Math.cos(t*0.9 + k)*0.25); d.scale.setScalar(2.4);
+    });
+
+    /* resolution, caustics, draw */
+    ema = ema*0.95 + dt*1000*0.05;
+    if (!R.pr) R.pr = Math.min(Q().pr, window.devicePixelRatio || 1);
+    if (ema > 24){ slow += dt; if (slow > 1.2 && R.pr > 0.5){ R.pr = Math.max(0.5, R.pr - 0.12); slow = 0; } } else slow = 0;
+    var rw = Math.round(W*R.pr), rh = Math.round(H*R.pr);
+    if (R.canvas.width !== rw || R.canvas.height !== rh){ R.renderer.setPixelRatio(1); R.renderer.setSize(rw, rh, false); }
+    U.uRes.value.set(rw, rh);
+    if (R.ov) for (var ok3 in R.ov) U[ok3].value = R.ov[ok3];
+    present(X.scene, cam, X.pos);
+  }
+
+  // the game's own 3D shark, lit by the water, body flexing as it swims (one copy per scene)
+  function makeSharkHolder(spec){
+    var g3 = buildSharkHD(spec);
+    var holder = new THREE.Group(); holder.add(g3); holder.userData.model = g3;
+    return holder;
+  }
+
+
+  /* ====================================================================================
+     Rendering quality: a Low / Medium / High setting, an HDR pipeline (bloom, ACES tone
+     map, grade, vignette, anti-aliasing), sun shadows for the open ocean, and a detailed
+     shark with wet skin.
+     ==================================================================================== */
+  var QKEY = "sharkOdyssey.quality", quality = "auto";
+  try { var qs = localStorage.getItem(QKEY); if (qs === "low" || qs === "medium" || qs === "high" || qs === "auto") quality = qs; } catch(e){}
+  var QS = {
+    low:    { pr:1.0,  post:false, aa:"none", sh:0,    taps:0, lv:0, ca:0 },
+    medium: { pr:1.25, post:true,  aa:"fxaa", sh:1024, taps:4, lv:4, ca:0 },
+    high:   { pr:2.0,  post:true,  aa:"msaa", sh:2048, taps:8, lv:5, ca:0.0022 }
+  };
+  function qName(){
+    if (quality !== "auto") return quality;
+    var coarse = false; try { coarse = window.matchMedia("(pointer:coarse)").matches; } catch(e){}
+    return (coarse || Math.min(screen.width, screen.height) < 700) ? "medium" : "high";
+  }
+  function Q(){ var q = QS[qName()]; if (q.post && P && P.bad) return QS.low; return q; }
+  function setQuality(q){
+    quality = q; try { localStorage.setItem(QKEY, q); } catch(e){}
+    if (R) { R.pr = 0; slow = 0; ema = 16.7; }
+    if (P) P.w = 0;
+    if (SH && SH.size !== Q().sh) { SH.rt.dispose(); SH = null; }
+    applyQuality();
+  }
+  function applyQuality(){
+    document.querySelectorAll(".qualTab").forEach(function(b){ b.classList.toggle("active", b.dataset.q === quality); });
+    var row = document.getElementById("qualRow"); if (row) row.style.display = active() ? "" : "none";
+    var qb = document.getElementById("exQual");
+    if (qb) qb.textContent = "✨ " + ({ auto:"Auto", low:"Low", medium:"Medium", high:"High" })[quality];
+  }
+
+  /* ---------- HDR post: bloom, tone map, grade, vignette, FXAA ---------- */
+  var P = null;
+  var FS_VS = "varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}";
+  var GRADE_GLSL = [
+    "vec3 tmap(vec3 x){return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.,1.);}",
+    "float ign(vec2 p){return fract(52.9829189*fract(dot(p,vec2(.06711056,.00583715))));}",
+    "vec3 gradeOut(vec3 c,vec2 fc,vec2 res){vec2 q=fc/res-.5;c*=1.-dot(q,q)*.55;c=tmap(c);",
+    " float l0=dot(c,vec3(.2126,.7152,.0722));float l=mix(l0,l0*l0*(3.-2.*l0),.55);c*=l/max(l0,1e-4);",
+    " c=mix(c,vec3(l),smoothstep(.55,1.,l)*.1);c=mix(vec3(l),c,.93)+vec3(.008,.002,0.);",
+    " return pow(max(c,vec3(0.)),vec3(.4545))+(ign(fc)-.5)/255.;}"
+  ].join("\n");
+  function postSetup(){
+    var r = R.renderer, gl = r.getContext(), gl2 = r.capabilities.isWebGL2;
+    P = { bad:false, w:0, h:0, b:[], scene:new THREE.Scene(), cam:new THREE.Camera() };
+    var hf = gl2 ? (r.extensions.get("EXT_color_buffer_float") || r.extensions.get("EXT_color_buffer_half_float"))
+                 : (r.extensions.get("OES_texture_half_float") && r.extensions.get("OES_texture_half_float_linear") && r.extensions.get("EXT_color_buffer_half_float"));
+    if (!hf){ P.bad = true; return; }
+    P.gl2 = gl2;
+    // check the GPU really can draw into a half-float target
+    try {
+      var t = new THREE.WebGLRenderTarget(4, 4, { type:THREE.HalfFloatType, depthBuffer:false });
+      r.setRenderTarget(t);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) P.bad = true;
+      r.setRenderTarget(null); t.dispose();
+    } catch(e){ P.bad = true; }
+    if (P.bad) return;
+    P.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2)); P.quad.frustumCulled = false; P.scene.add(P.quad);
+    function pass(fs, uni, extra){
+      return new THREE.ShaderMaterial(Object.assign({ uniforms:uni, vertexShader:FS_VS, fragmentShader:fs, depthTest:false, depthWrite:false }, extra || {}));
+    }
+    // bright pass with a soft knee, and Karis averaging so single hot pixels don't flicker
+    P.pre = pass([
+      "uniform sampler2D tS;uniform vec2 uTx;uniform float uThr;varying vec2 vUv;",
+      "vec3 k(vec3 c){return c/(1.+dot(c,vec3(.2126,.7152,.0722)));}",
+      "void main(){vec3 a=texture2D(tS,vUv+uTx*vec2(-1.,-1.)).rgb,b=texture2D(tS,vUv+uTx*vec2(1.,-1.)).rgb,",
+      " c=texture2D(tS,vUv+uTx*vec2(-1.,1.)).rgb,d=texture2D(tS,vUv+uTx*vec2(1.,1.)).rgb;",
+      " vec3 s=(k(a)+k(b)+k(c)+k(d))/4.;s=s/max(1.-dot(s,vec3(.2126,.7152,.0722)),.02);",
+      " float br=max(s.r,max(s.g,s.b));float kn=.5*uThr;float sq=clamp(br-uThr+kn,0.,2.*kn);sq=sq*sq/(4.*kn+1e-4);",
+      " gl_FragColor=vec4(s*max(sq,br-uThr)/max(br,1e-4),1.);}"
+    ].join("\n"), { tS:{ value:null }, uTx:{ value:new THREE.Vector2() }, uThr:{ value:0.9 } });
+    P.down = pass([
+      "uniform sampler2D tS;uniform vec2 uTx;varying vec2 vUv;",
+      "void main(){vec3 c=texture2D(tS,vUv).rgb*4.;c+=texture2D(tS,vUv+uTx*vec2(-1.,-1.)).rgb;c+=texture2D(tS,vUv+uTx*vec2(1.,-1.)).rgb;",
+      " c+=texture2D(tS,vUv+uTx*vec2(-1.,1.)).rgb;c+=texture2D(tS,vUv+uTx*vec2(1.,1.)).rgb;gl_FragColor=vec4(c/8.,1.);}"
+    ].join("\n"), { tS:{ value:null }, uTx:{ value:new THREE.Vector2() } });
+    P.up = pass([
+      "uniform sampler2D tS;uniform vec2 uTx;uniform float uK;varying vec2 vUv;",
+      "void main(){vec3 c=texture2D(tS,vUv+uTx*vec2(-2.,0.)).rgb+texture2D(tS,vUv+uTx*vec2(2.,0.)).rgb+texture2D(tS,vUv+uTx*vec2(0.,-2.)).rgb+texture2D(tS,vUv+uTx*vec2(0.,2.)).rgb;",
+      " c+=2.*(texture2D(tS,vUv+uTx*vec2(-1.,1.)).rgb+texture2D(tS,vUv+uTx*vec2(1.,1.)).rgb+texture2D(tS,vUv+uTx*vec2(-1.,-1.)).rgb+texture2D(tS,vUv+uTx*vec2(1.,-1.)).rgb);",
+      " gl_FragColor=vec4(c/12.*uK,1.);}"
+    ].join("\n"), { tS:{ value:null }, uTx:{ value:new THREE.Vector2() }, uK:{ value:1 } }, { blending:THREE.AdditiveBlending });
+    P.comp = pass([
+      "uniform sampler2D tS,tB;uniform float uBloom,uCA,uLum;uniform vec2 uRes;varying vec2 vUv;",
+      GRADE_GLSL,
+      "void main(){vec3 c=texture2D(tS,vUv).rgb;",
+      " if(uCA>0.){vec2 d=(vUv-.5)*uCA*length(vUv-.5)*2.;c.r=texture2D(tS,vUv+d).r;c.b=texture2D(tS,vUv-d).b;}",
+      " c+=texture2D(tB,vUv).rgb*uBloom;",
+      " c=gradeOut(c,gl_FragCoord.xy,uRes);",
+      " gl_FragColor=vec4(c,uLum>.5?dot(c,vec3(.299,.587,.114)):1.);}"
+    ].join("\n"), { tS:{ value:null }, tB:{ value:null }, uBloom:{ value:0.5 }, uCA:{ value:0 }, uLum:{ value:0 }, uRes:{ value:new THREE.Vector2() } });
+    P.fxaa = pass([
+      "uniform sampler2D tS;uniform vec2 uRes;varying vec2 vUv;",
+      "void main(){vec2 inv=1./uRes;vec2 fc=vUv*uRes;",
+      " vec3 nw=texture2D(tS,(fc+vec2(-1.,-1.))*inv).rgb,ne=texture2D(tS,(fc+vec2(1.,-1.))*inv).rgb,",
+      "  sw=texture2D(tS,(fc+vec2(-1.,1.))*inv).rgb,se=texture2D(tS,(fc+vec2(1.,1.))*inv).rgb;vec4 m=texture2D(tS,vUv);",
+      " vec3 L=vec3(.299,.587,.114);float lnw=dot(nw,L),lne=dot(ne,L),lsw=dot(sw,L),lse=dot(se,L),lm=dot(m.rgb,L);",
+      " float mn=min(lm,min(min(lnw,lne),min(lsw,lse))),mx=max(lm,max(max(lnw,lne),max(lsw,lse)));",
+      " vec2 dir=vec2(-((lnw+lne)-(lsw+lse)),((lnw+lsw)-(lne+lse)));",
+      " float red=max((lnw+lne+lsw+lse)*(.25/8.),1./128.);float rc=1./(min(abs(dir.x),abs(dir.y))+red);",
+      " dir=clamp(dir*rc,vec2(-8.),vec2(8.))*inv;",
+      " vec3 A=.5*(texture2D(tS,vUv+dir*(1./3.-.5)).rgb+texture2D(tS,vUv+dir*(2./3.-.5)).rgb);",
+      " vec3 B=A*.5+.25*(texture2D(tS,vUv-dir*.5).rgb+texture2D(tS,vUv+dir*.5).rgb);float lb=dot(B,L);",
+      " gl_FragColor=vec4((lb<mn||lb>mx)?A:B,1.);}"
+    ].join("\n"), { tS:{ value:null }, uRes:{ value:new THREE.Vector2() } });
+  }
+  function postSize(w, h, q){
+    if (P.w === w && P.h === h && P.q === q) return;
+    if (P.rt) P.rt.dispose(); if (P.ldr) P.ldr.dispose(); P.b.forEach(function(t){ t.dispose(); });
+    var o = { type:THREE.HalfFloatType, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter, depthBuffer:true, stencilBuffer:false };
+    if (q.aa === "msaa" && P.gl2 && THREE.WebGLMultisampleRenderTarget){ P.rt = new THREE.WebGLMultisampleRenderTarget(w, h, o); P.rt.samples = 4; P.msaa = true; }
+    else { P.rt = new THREE.WebGLRenderTarget(w, h, o); P.msaa = false; }
+    P.ldr = (q.aa === "fxaa" || (q.aa === "msaa" && !P.msaa)) ? new THREE.WebGLRenderTarget(w, h, { minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter, depthBuffer:false }) : null;
+    P.b = [];
+    var bw = w, bh = h;
+    for (var i = 0; i < q.lv; i++){
+      bw = Math.max(1, bw >> 1); bh = Math.max(1, bh >> 1);
+      P.b.push(new THREE.WebGLRenderTarget(bw, bh, { type:THREE.HalfFloatType, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter, depthBuffer:false }));
+    }
+    P.w = w; P.h = h; P.q = q;
+  }
+  function run(mat, target){ P.quad.material = mat; R.renderer.setRenderTarget(target); R.renderer.render(P.scene, P.cam); }
+
+  /* every frame: caustics, shadows, the scene, then the post chain */
+  function present(scene, cam, shadowAt){
+    var r = R.renderer, q = Q(), w = R.canvas.width, h = R.canvas.height;
+    r.setRenderTarget(R.caus.rt); r.render(R.caus.scene, R.caus.cam);
+    if (shadowAt && q.sh) shadowPass(scene, shadowAt, q); else U.uShadowOn.value = 0;
+    if (!q.post){ U.uHdr.value = 0; r.setRenderTarget(null); r.render(scene, cam); return; }
+    if (!P) postSetup();
+    if (P.bad){ U.uHdr.value = 0; r.setRenderTarget(null); r.render(scene, cam); return; }
+    postSize(w, h, q);
+    U.uHdr.value = 1;
+    r.setRenderTarget(P.rt); r.render(scene, cam);
+    var ac = r.autoClear; r.autoClear = false;
+    // bloom: bright pass, blur down the chain, then back up adding each level
+    P.pre.uniforms.tS.value = P.rt.texture; P.pre.uniforms.uTx.value.set(0.5/w, 0.5/h);
+    P.pre.uniforms.uThr.value = 0.85;
+    run(P.pre, P.b[0]);
+    for (var i = 1; i < P.b.length; i++){
+      P.down.uniforms.tS.value = P.b[i-1].texture; P.down.uniforms.uTx.value.set(1/P.b[i-1].width, 1/P.b[i-1].height);
+      run(P.down, P.b[i]);
+    }
+    for (i = P.b.length - 1; i > 0; i--){
+      P.up.uniforms.tS.value = P.b[i].texture; P.up.uniforms.uTx.value.set(0.5/P.b[i].width, 0.5/P.b[i].height);
+      P.up.uniforms.uK.value = 1;
+      run(P.up, P.b[i-1]);
+    }
+    var c = P.comp.uniforms;
+    c.tS.value = P.rt.texture; c.tB.value = P.b[0].texture; c.uRes.value.set(w, h);
+    c.uBloom.value = 0.075/P.b.length; c.uCA.value = q.ca; c.uLum.value = P.ldr ? 1 : 0;
+    if (P.ldr){
+      run(P.comp, P.ldr);
+      P.fxaa.uniforms.tS.value = P.ldr.texture; P.fxaa.uniforms.uRes.value.set(w, h);
+      run(P.fxaa, null);
+    } else run(P.comp, null);
+    r.autoClear = ac;
+  }
+
+  /* ---------- sun shadows (open ocean only): a depth map from the sun around the shark ---------- */
+  var SH = null;
+  function shadowPass(scene, center, q){
+    var r = R.renderer;
+    if (!SH){
+      SH = { size:q.sh, rt:new THREE.WebGLRenderTarget(q.sh, q.sh, { minFilter:THREE.NearestFilter, magFilter:THREE.NearestFilter, depthBuffer:true, stencilBuffer:false }),
+             half:34, cam:new THREE.OrthographicCamera(-34, 34, 34, -34, 1, 220),
+             depth:new THREE.MeshDepthMaterial({ depthPacking:THREE.RGBADepthPacking }), v:new THREE.Vector3(), hide:[], swap:[] };
+    }
+    var cam = SH.cam, sun = U.uSun.value, tex = 2*SH.half/SH.size;
+    // keep the map steady as you swim: snap its centre to whole texels in the sun's view
+    cam.position.set(0, 0, 0); cam.lookAt(-sun.x, -sun.y, -sun.z); cam.updateMatrixWorld();
+    var c = SH.v.copy(center).applyMatrix4(cam.matrixWorldInverse);
+    c.x = Math.round(c.x/tex)*tex; c.y = Math.round(c.y/tex)*tex;
+    c.applyMatrix4(cam.matrixWorld);
+    cam.position.copy(c).addScaledVector(sun, 110); cam.updateMatrixWorld();
+    U.uShadowM.value.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    U.uShTaps.value = q.taps; U.uShR.value = 1.6/SH.size;
+    var hide = SH.hide, swap = SH.swap; hide.length = 0; swap.length = 0;
+    scene.traverse(function(o){
+      var m = o.material; if (!m) return;
+      if (o.isPoints || o.isLine || m.userData.noShadow || m.transparent || !(o.isMesh)){ if (o.visible){ o.visible = false; hide.push(o); } return; }
+      swap.push(o, m); o.material = m.userData.depthMat || SH.depth;
+    });
+    var cc = r.getClearColor(new THREE.Color()), ca = r.getClearAlpha();
+    r.setClearColor(0xffffff, 1); r.setRenderTarget(SH.rt); r.clear(); r.render(scene, cam);
+    r.setClearColor(cc, ca);
+    for (var i = 0; i < swap.length; i += 2) swap[i].material = swap[i+1];
+    hide.forEach(function(o){ o.visible = true; });
+    U.uShadow.value = SH.rt.texture; U.uShadowOn.value = 1;
+  }
+
+  /* ---------- a detailed shark: one smooth body with sculpted head, thick swept fins, wet skin ---------- */
+  function sharkBodyGeometry(spec){
+    var L = 2, isWhale = spec.head === "whale";
+    var maxH = isWhale ? 0.30 : (spec.slim ? 0.13 : 0.24), maxW = isWhale ? 0.28 : (spec.slim ? 0.095 : 0.165);
+    var SL = 96, SR = 40, noseT = spec.head === "point" ? 0.05 : (isWhale ? 0.34 : 0.15), peak = 0.33;
+    function prof(u){
+      if (u < peak){ var k = u/peak; return noseT + (1 - noseT)*Math.pow(Math.sin(k*Math.PI/2), isWhale ? 0.6 : 0.85); }
+      var k2 = (u - peak)/(1 - peak), e = k2*k2*(3 - 2*k2);
+      return 1 - e*0.84;
+    }
+    var pos = [], uv = [], idx = [], i, j;
+    for (i = 0; i <= SL; i++){
+      var u = i/SL, pp = prof(u), x = L/2 - u*L;
+      var cy = 0.035*Math.sin(Math.PI*Math.min(1, u/0.9)) + (u > 0.82 ? (u - 0.82)*0.28 : 0) - (u < 0.1 ? (0.1 - u)*0.25 : 0); // spine arches; caudal stock lifts
+      var hScale = u < 0.18 ? 0.78 + 0.22*u/0.18 : 1;                 // the head is flatter than the body
+      if (isWhale && u < 0.2) hScale *= 0.75;
+      var keel = u > 0.8 ? 1 + (u - 0.8)*3.5 : 1;                     // the tail stock gets flatter and wider (keel)
+      for (j = 0; j <= SR; j++){
+        var a = j/SR*Math.PI*2, ca = Math.cos(a), sa = Math.sin(a);
+        var yy = ca*maxH*pp*hScale*(ca < 0 ? 0.82 : 1) / (u > 0.8 ? keel*0.8 : 1);
+        var zz = sa*maxW*pp*(1 - 0.22*Math.pow(Math.max(ca, 0), 3))*(u > 0.8 ? Math.min(1.5, keel*0.7) : 1);
+        if (u < 0.12) yy += 0.25*(0.12 - u)*maxH;                     // nose sits a little high, like a real shark's snout
+        pos.push(x, yy + cy*maxH*2.4, zz);
+        uv.push(u, j/SR);
+      }
+    }
+    for (i = 0; i < SL; i++) for (j = 0; j < SR; j++){
+      var a1 = i*(SR + 1) + j, b1 = a1 + SR + 1;
+      idx.push(a1, b1, a1 + 1, b1, b1 + 1, a1 + 1);
+    }
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(idx); geo.computeVertexNormals();
+    geo.userData = { maxH:maxH, maxW:maxW, prof:prof };
+    return geo;
+  }
+  // a fin: outline in its own plane, given thickness that thins to the edges; t (0 base, 1 tip) for colouring
+  function finGeometry(outline, thick, curve){
+    var s = new THREE.Shape();
+    s.moveTo(outline[0][0], outline[0][1]);
+    for (var k = 1; k < outline.length; k++){
+      var pt = outline[k];
+      if (pt.length > 2) s.quadraticCurveTo(pt[2], pt[3], pt[0], pt[1]); else s.lineTo(pt[0], pt[1]);
+    }
+    var g = new THREE.ExtrudeGeometry(s, { depth:thick*0.25, bevelEnabled:true, bevelThickness:thick*0.5, bevelSize:thick*0.6, bevelSegments:2, curveSegments:10 });
+    g.translate(0, 0, -thick*0.125);
+    if (g.index) g = g.toNonIndexed();
+    var p = g.attributes.position, ymax = 0, n = p.count, t = new Float32Array(n), i;
+    for (i = 0; i < n; i++) ymax = Math.max(ymax, Math.abs(p.getY(i)));
+    for (i = 0; i < n; i++){
+      var y = p.getY(i), z = p.getZ(i), tt = Math.abs(y)/ymax;
+      if (curve) p.setZ(i, z + curve*tt*tt);                           // fins curve gently, not flat plates
+      t[i] = tt;
+    }
+    g.setAttribute("aT", new THREE.Float32BufferAttribute(t, 1));
+    g.deleteAttribute("uv");
+    g.computeVertexNormals();
+    return g;
+  }
+  function mergeT(geos){
+    var pos = [], nor = [], t = [];
+    geos.forEach(function(g){
+      Array.prototype.push.apply(pos, g.attributes.position.array);
+      Array.prototype.push.apply(nor, g.attributes.normal.array);
+      if (g.attributes.aT) Array.prototype.push.apply(t, g.attributes.aT.array);
+      else for (var i = 0; i < g.attributes.position.count; i++) t.push(-1);
+    });
+    var m = new THREE.BufferGeometry();
+    m.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    m.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+    m.setAttribute("aT", new THREE.Float32BufferAttribute(t, 1));
+    return m;
+  }
+  function place(g, x, y, z, rx, ry, rz, sx){
+    var m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx || 0, ry || 0, rz || 0, "YXZ")), new THREE.Vector3(sx || 1, sx || 1, sx || 1));
+    g.applyMatrix4(m); return g;
+  }
+  function sharkFinsGeometry(spec, body){
+    var mh = body.userData.maxH, mw = body.userData.maxW, L = 2, f = [], hammer = spec.head === "hammer", whale = spec.head === "whale";
+    var big = spec.slim ? 0.8 : 1;
+    // first dorsal: tall, swept back with a curved trailing edge
+    f.push(place(finGeometry([[0.2, 0], [0.02, 0.4*big, 0.1, 0.3*big], [-0.06, 0.42*big], [-0.1, 0.16*big, -0.13, 0.32*big], [-0.2, 0]], 0.03, 0.0),
+      0.1, mh*0.78, 0));
+    f.push(place(finGeometry([[0.06, 0], [-0.01, 0.1], [-0.05, 0.09], [-0.03, 0.04], [-0.08, 0]], 0.016), -0.5, mh*0.42, 0));  // second dorsal
+    f.push(place(finGeometry([[0.05, 0], [-0.03, -0.08], [-0.07, -0.07], [-0.05, -0.02], [-0.08, 0]], 0.014), -0.52, -mh*0.36, 0));  // anal
+    // caudal fin: big upper lobe, smaller lower lobe, notch at the tip
+    f.push(place(finGeometry([[0.06, 0.02], [-0.3, 0.5, -0.12, 0.2], [-0.36, 0.48], [-0.2, 0.18, -0.24, 0.32], [-0.13, 0.03],
+      [-0.26, -0.26, -0.2, -0.1], [-0.2, -0.27], [-0.02, -0.04, -0.06, -0.2], [0.06, -0.02]], 0.03), -L/2 + 0.05, 0.05, 0, 0, 0, 0, whale ? 0.72 : 0.6));
+    // pectorals: long, angled down and back
+    var pec = [[0.1, 0], [-0.18, -0.4, 0.02, -0.25], [-0.28, -0.42], [-0.16, -0.12, -0.24, -0.25], [-0.1, 0]];
+    f.push(place(finGeometry(pec, 0.026, -0.03), L*0.12, -mh*0.42, mw*0.62, -1.05, 0, -0.25, big));
+    f.push(place(finGeometry(pec, 0.026, 0.03), L*0.12, -mh*0.42, -mw*0.62, 1.05, 0, -0.25, big));
+    var pel = [[0.05, 0], [-0.04, -0.1], [-0.1, -0.1], [-0.06, 0]];
+    f.push(place(finGeometry(pel, 0.014), -0.32, -mh*0.55, mw*0.32, -0.7, 0, 0));
+    f.push(place(finGeometry(pel, 0.014), -0.32, -mh*0.55, -mw*0.32, 0.7, 0, 0));
+    if (hammer){
+      var hg = new THREE.SphereGeometry(1, 24, 12); hg.scale(0.13, 0.04, 0.42); f.push(place(hg.toNonIndexed(), L*0.44, mh*0.05, 0));
+    }
+    if (spec.head === "goblin"){ var sn = new THREE.ConeGeometry(0.06, 0.4, 12); sn.rotateZ(-Math.PI/2); f.push(place(sn.toNonIndexed(), L*0.6, mh*0.3, 0)); }
+    if (spec.barbels){ [-0.05, 0.05].forEach(function(z){ f.push(place(new THREE.CylinderGeometry(0.008, 0.004, 0.1, 6).toNonIndexed(), L*0.46, -mh*0.42, z)); }); }
+    var g = mergeT(f);
+    // eyes (aT = -2): glossy black domes
+    var ex = hammer ? L*0.44 : L*0.34, ey = hammer ? mh*0.05 : mh*0.3, ez = hammer ? 0.41 : mw*0.66;
+    var eyes = [place(new THREE.SphereGeometry(0.03, 12, 10).toNonIndexed(), ex, ey, ez), place(new THREE.SphereGeometry(0.03, 12, 10).toNonIndexed(), ex, ey, -ez)];
+    eyes.forEach(function(e){ var n = e.attributes.position.count, t = new Float32Array(n); for (var i = 0; i < n; i++) t[i] = -2; e.setAttribute("aT", new THREE.Float32BufferAttribute(t, 1)); });
+    return mergeT([g].concat(eyes));
+  }
+  // the shark's wet skin: species texture, countershading, skin grain, gill slits, sun glint, Fresnel sheen, shadows
+  function sharkMaterial(spec, isFin, tex){
+    var body = lin(spec.body), belly = lin(spec.belly || 0xeef4f2), tip = lin(spec.finTip || spec.body);
+    var swim = { value:0 }, amp = { value:1 };
+    var bendGL = "float bx=p.x;float tw=pow(clamp((.55-bx)/1.55,0.,1.),1.5);p.z+=sin(uPh-bx*2.6)*.16*tw*uAmp+sin(uPh*.5)*.01;";
+    var vs = [
+      "uniform float uT,uPh,uAmp;" + (isFin ? "attribute float aT;varying float vT;" : "varying vec2 vUv;"),
+      "varying vec3 uwPos;varying vec3 uwN;varying vec3 vLoc;",
+      "void main(){vec3 p=position;vec3 n=normal;vLoc=p;" + (isFin ? "vT=aT;" : "vUv=uv;"),
+      bendGL,
+      " float fp=-2.6*cos(uPh-bx*2.6)*.16*tw*uAmp;n=normalize(vec3(n.x-fp*n.z,n.y,n.z));",
+      " vec4 w=modelMatrix*vec4(p,1.);uwPos=w.xyz;uwN=normalize(mat3(modelMatrix)*n);gl_Position=projectionMatrix*viewMatrix*w;}"
+    ].join("\n");
+    var fs = [
+      "uniform vec3 uFill,uBody,uBelly,uTip;uniform sampler2D tMap;uniform float uLampI;varying vec3 vLoc;",
+      isFin ? "varying float vT;" : "varying vec2 vUv;",
+      UW_NOISE,
+      "float skin(vec3 p){return vn3(p*90.)*.6+vn3(p*190.)*.4;}",
+      "void main(){vec3 N=normalize(uwN);if(!gl_FrontFacing)N=-N;",
+      isFin
+        ? " vec3 alb=mix(uBody,uTip,smoothstep(.6,1.,vT));alb=mix(alb,uBelly*.85,smoothstep(.1,-.4,N.y)*.5);float spec=.35,gloss=70.;if(vT<-1.5){alb=vec3(.012,.014,.018);spec=1.6;gloss=220.;}"
+        : " vec3 alb=pow(texture2D(tMap,vUv).rgb,vec3(2.2));float spec=.45,gloss=60.;",
+      // skin grain: tiny bumps from the dermal denticles, stronger on the back
+      " vec3 e=vec3(.004,0.,0.);float s0=skin(vLoc);vec3 gr=vec3(skin(vLoc+e.xyy)-s0,skin(vLoc+e.yxy)-s0,skin(vLoc+e.yyx)-s0)/.004;",
+      " N=normalize(N-(gr-dot(gr,N)*N)*.0012);",
+      " float y=min(uwPos.y,0.);vec3 sunL=SUNC*exp(KD*y/uSun.y)*.62;float sh=shadowAt(uwPos+N*.03);",
+      " vec3 hi=fogIn(uwPos,vec3(0.,1.,0.),80.)*1.5;vec3 lo=fogIn(uwPos,vec3(0.,-1.,0.),80.);",
+      " vec3 amb=mix(lo,hi,.5+.5*N.y)*.6+uFill;",
+      " vec2 q=uwPos.xz-uSun.xz*(uwPos.y/uSun.y);vec3 ca=vec3(texture2D(uCaus,q/3.3+vec2(.004,.0025)).r,texture2D(uCaus,q/3.3).r,texture2D(uCaus,q/3.3-vec2(.004,.0025)).r);",
+      " vec3 cc=min(pow(ca,vec3(2.3))*5.*(.45+texture2D(uCaus,q.yx/6.9+.37).r*1.3),vec3(4.));",
+      " vec3 V=uwPos-cameraPosition;float d=length(V);vec3 rd=V/d;",
+      " float dif=max(dot(N,uSun)*.85+.15,0.);",                                                           // a little wrap, as skin scatters light
+      " vec3 c=alb*(sunL*sh*(dif*.8+cc*max(N.y,0.)*.65)+amb);",
+      " vec3 H=normalize(uSun-rd);float nh=max(dot(N,H),0.);",
+      " c+=sunL*sh*pow(nh,gloss)*spec*(gloss+8.)/50.*(.3+.7*s0);",
+      " float ndv=max(dot(N,-rd),0.);c+=(alb*(.3+.7*ndv)+pow(ndv,40.)*spec*.5)*vec3(.4,.8,1.)*uLampI;",                                            // wet glint, broken up by the skin
+      " float fr=.02+.98*pow(1.-max(dot(N,-rd),0.),5.);vec3 env=fogIn(uwPos,reflect(rd,N),60.)*1.4;",
+      " c=mix(c,env,fr*.55);",
+      " c=c*exp(-SIG*d)+fogIn(cameraPosition,rd,d)+shafts(cameraPosition,rd,1.,min(d,60.),ign(gl_FragCoord.xy));",
+      " gl_FragColor=vec4(finish(c),1.);}"
+    ].join("\n");
+    var m = shaderMat(vs, fs, { side:isFin ? THREE.DoubleSide : THREE.FrontSide });
+    m.uniforms.uPh = swim; m.uniforms.uAmp = amp; m.uniforms.uFill = U.uFill; m.uniforms.uLampI = U.uLampI;
+    m.uniforms.uBody = { value:new THREE.Vector3(body.r, body.g, body.b) };
+    m.uniforms.uBelly = { value:new THREE.Vector3(belly.r, belly.g, belly.b) };
+    m.uniforms.uTip = { value:new THREE.Vector3(tip.r, tip.g, tip.b) };
+    m.uniforms.tMap = { value:tex };
+    m.userData.depthMat = new THREE.ShaderMaterial({ uniforms:{ uT:U.uT, uPh:swim, uAmp:amp },
+      vertexShader:"uniform float uT,uPh,uAmp;void main(){vec3 p=position;" + bendGL + "gl_Position=projectionMatrix*viewMatrix*modelMatrix*vec4(p,1.);}",
+      fragmentShader:"#include <packing>\nvoid main(){gl_FragColor=packDepthToRGBA(gl_FragCoord.z);}", side:THREE.DoubleSide });
+    return m;
+  }
+  function buildSharkHD(spec){
+    var g3 = new THREE.Group();
+    var bodyGeo = sharkBodyGeometry(spec);
+    var tex = new THREE.CanvasTexture(sharkTexture(spec));
+    tex.anisotropy = 4; tex.needsUpdate = true;
+    var bm = sharkMaterial(spec, false, tex), fm = sharkMaterial(spec, true, null);
+    fm.uniforms.uPh = bm.uniforms.uPh; fm.uniforms.uAmp = bm.uniforms.uAmp;
+    fm.userData.depthMat.uniforms.uPh = bm.uniforms.uPh; fm.userData.depthMat.uniforms.uAmp = bm.uniforms.uAmp;
+    g3.add(new THREE.Mesh(bodyGeo, bm));
+    g3.add(new THREE.Mesh(sharkFinsGeometry(spec, bodyGeo), fm));
+    g3.children.forEach(function(c){ c.frustumCulled = false; });
+    g3.userData.swim = function(ph, a){ bm.uniforms.uPh.value = ph; bm.uniforms.uAmp.value = a; };
+    return g3;
+  }
+
+  /* ====================================================================================
+     The campaign's other sea life in 3D: jellyfish, sea snakes, glowing plankton, the
+     mystery orbs, the dolphin duel and the squid. Their game logic and hit boxes stay
+     the game's own; only the drawing moves into the ocean scene. Text markers ("!",
+     stars, the orb icons) stay 2D on top so they read the same as in Cartoon.
+     ==================================================================================== */
+  function buildCreatures(){
+    var C = { snakes:[], squids:{}, v:new THREE.Vector3() };
+    var jg = jellyGeometry(), JN = 24, jph = new Float32Array(JN);
+    for (var i = 0; i < JN; i++) jph[i] = i*1.37;
+    jg.setAttribute("aPhase", new THREE.InstancedBufferAttribute(jph, 1));
+    C.jellies = new THREE.InstancedMesh(jg, jellyMat(), JN); C.jellies.frustumCulled = false; 
+    C.jellies.setColorAt(0, new THREE.Color()); C.jellies.count = 0; R.scene.add(C.jellies);
+    C.orbs = new THREE.InstancedMesh(orbGeometry(), orbMat(), 12); C.orbs.frustumCulled = false; 
+    C.orbs.setColorAt(0, new THREE.Color()); C.orbs.count = 0; R.scene.add(C.orbs);
+    C.plank = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), uwMat({ color:0xffffff, caus:0.1, emit:"vCol*2.2" }), 7*24);
+    C.plank.frustumCulled = false;  C.plank.setColorAt(0, new THREE.Color()); C.plank.count = 0; R.scene.add(C.plank);
+    C.dolphin = dolphinGroup(); C.dolphin.visible = false; R.scene.add(C.dolphin);
+    return C;
+  }
+  function squidFor(kind, c){
+    var C = R.cre;
+    if (C.squids[kind]) return C.squids[kind];
+    var g = squidGroup(true), body = lin(c.body), dark = lin(c.dark);
+    g.children[0].material.uniforms.uColor.value.set(body.r, body.g, body.b);
+    g.children[1].material.uniforms.uColor.value.set(dark.r*1.2, dark.g*1.2, dark.b*1.2);
+    // the two long feeding tentacles, built along +x from the head so they can shoot out
+    var parts = [];
+    [-1, 1].forEach(function(s){
+      var t = new THREE.CylinderGeometry(0.012, 0.035, 1, 5, 14); t.translate(0, 0.5, 0); t.rotateZ(-Math.PI/2); t.translate(0, 0, s*0.06);
+      var club = new THREE.SphereGeometry(1, 8, 6); club.scale(0.09, 0.035, 0.045); club.translate(0.95, 0, s*0.06);
+      parts.push(t, club);
+    });
+    var tm = new THREE.Mesh(merge(parts), uwMat({ color:c.body, caus:0.4, emit:"vCol*uGlow*.0",
+      local:"float tl=p.x;p.y+=sin(uT*2.6+p.x*5.+p.z*30.)*.05*tl;" }));
+    tm.position.set(0.3, 0, 0); g.add(tm); g.userData.tent = tm;
+    R.scene.add(g); C.squids[kind] = g;
+    return g;
+  }
+  function campaignCreatures(g, t, W, H, px2m, now, deep){
+    if (!R.cre) R.cre = buildCreatures();
+    var C = R.cre, dmy = R.dmy, col = R.col, n = 0, i;
+    // jellyfish: bell and trailing tentacles, glowing pink in the deep
+    g.jellies.forEach(function(j){
+      if (n >= 24) return;
+      var w = toWorld(j.x + Math.sin(t*1.4 + j.seed)*12, j.y, W, H), s = j.r*px2m;
+      dmy.position.set(w[0], w[1], 0); dmy.rotation.set(0.25, j.seed, Math.sin(t*0.8 + j.seed)*0.1); dmy.scale.set(s*1.05, s*0.95, s*1.05);
+      dmy.updateMatrix(); C.jellies.setMatrixAt(n, dmy.matrix);
+      col.set(deep ? "#ff6fb0" : "#ff9cc4").convertSRGBToLinear(); C.jellies.setColorAt(n, col); n++;
+    });
+    C.jellies.count = n; C.jellies.instanceMatrix.needsUpdate = true; if (C.jellies.instanceColor) C.jellies.instanceColor.needsUpdate = true;
+    // mystery orbs: glowing glassy spheres (the "?" and telescope icons stay 2D on top)
+    n = 0;
+    g.orbs.forEach(function(o){
+      if (n >= 12) return;
+      var w = toWorld(o.x, o.y + Math.sin(t*2 + o.seed)*6, W, H), s = o.r*px2m*(1 + Math.sin(t*4 + o.seed)*0.12);
+      dmy.position.set(w[0], w[1], 0.2); dmy.rotation.set(t*0.3, t*0.5 + o.seed, 0); dmy.scale.setScalar(s);
+      dmy.updateMatrix(); C.orbs.setMatrixAt(n, dmy.matrix);
+      col.set(o.kind === "spot" ? "#b69cff" : "#35e0c8").convertSRGBToLinear(); C.orbs.setColorAt(n, col); n++;
+    });
+    C.orbs.count = n; C.orbs.instanceMatrix.needsUpdate = true; if (C.orbs.instanceColor) C.orbs.instanceColor.needsUpdate = true;
+    // plankton swarms: a ring of tiny glowing beads
+    n = 0;
+    g.fish.forEach(function(f){
+      if (f.type !== "plankton" || n > 7*23) return;
+      var w = toWorld(f.x, f.y, W, H);
+      col.set(f.color).convertSRGBToLinear();
+      for (var k = 0; k < 7; k++){
+        var a = (k/6)*Math.PI*2 + t*0.8 + f.seed, rr = k === 6 ? 0 : (f.r*0.55 + Math.sin(t*2 + k)*3)*px2m;
+        dmy.position.set(w[0] + Math.cos(a)*rr, w[1] + Math.sin(a)*rr, Math.sin(a*1.7 + t)*rr*0.6);
+        dmy.rotation.set(0, 0, 0); dmy.scale.setScalar((k === 6 ? 4 : 3.2)*px2m);
+        dmy.updateMatrix(); C.plank.setMatrixAt(n, dmy.matrix); C.plank.setColorAt(n, col); n++;
+      }
+    });
+    C.plank.count = n; C.plank.instanceMatrix.needsUpdate = true; if (C.plank.instanceColor) C.plank.instanceColor.needsUpdate = true;
+    // banded sea snakes: a tube along the game's own snake path, thin neck, thick middle, paddle tail
+    g.snakes.forEach(function(sn, si){
+      var pts = snakePoints(sn, t), m = C.snakes[si];
+      if (!m || m.userData.n !== pts.length){
+        if (m) R.scene.remove(m);
+        m = makeSnake(pts.length); C.snakes[si] = m; R.scene.add(m);
+        var hd = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), uwMat({ color:0x141518, caus:0.5, spec:0.3, gloss:40 }));
+        m.add(hd); m.userData.head = hd;
+      }
+      m.visible = true;
+      var wp = pts.map(function(p){ var w = toWorld(p.x, p.y, W, H); return { x:w[0], y:w[1], z:Math.sin(t*2 + p.x*0.01)*0.1 }; });
+      var N = pts.length;
+      setSnake(m, wp, function(k){ return (6 + 9*Math.sin(Math.PI*Math.min(1, (k + 1.5)/(N - 2))))*0.5*px2m; });
+      var h0 = wp[0], h1 = wp[1];
+      m.userData.head.position.set(h0.x, h0.y, h0.z); m.userData.head.rotation.set(0, 0, Math.atan2(h0.y - h1.y, h0.x - h1.x));
+      m.userData.head.scale.set(11*px2m, 7.5*px2m, 7*px2m);
+    });
+    for (i = g.snakes.length; i < C.snakes.length; i++) if (C.snakes[i]) C.snakes[i].visible = false;
+    // the dolphin duel
+    var d = g.duel, dm = C.dolphin;
+    dm.visible = !!d && !(now - d.hitAt < 300 && Math.sin(t*40) > 0);
+    if (d){
+      var dw = toWorld(d.x, d.y + (d.phase === "dizzy" ? Math.sin(t*6)*3 : 0), W, H), ds = 118*1.19*px2m/2.1;
+      var tilt = d.phase === "charge" ? Math.atan2(d.dy, Math.abs(d.dx))*0.6 : Math.sin(t*2)*0.06;
+      dm.position.set(dw[0] + (d.phase === "windup" ? Math.sin(t*60)*2*px2m : 0), dw[1], 0);
+      dm.rotation.set(0, d.face > 0 ? -0.25 : Math.PI + 0.25, -tilt*(d.face > 0 ? 1 : 1));
+      dm.scale.setScalar(ds);
+    }
+    // the squid: mantle, arms, and the two feeding tentacles that shoot out on a strike
+    Object.keys(C.squids).forEach(function(k){ C.squids[k].visible = false; });
+    var q = g.squid;
+    if (q){
+      var c = SQUIDS[q.kind], sg = squidFor(q.kind, c), ms = c.M*px2m/1.1;
+      var qw = toWorld(q.x + (q.phase === "telegraph" ? Math.sin(t*50)*1.5 : 0), q.y + (q.phase === "tired" ? Math.sin(t*3)*2 : 0), W, H);
+      sg.visible = !(now - q.hitAt < 300 && Math.sin(t*40) > 0);
+      sg.position.set(qw[0], qw[1], 0); sg.rotation.set(0.35, 0, -q.ang); sg.scale.setScalar(ms);
+      var reach = q.phase === "strike" ? (c.A*0.2 + squidTentacleLen(q, now)) : c.A*1.35;
+      sg.userData.tent.scale.set(reach*px2m/ms, 1, 1);
+      sg.userData.tent.material.uniforms.uColor.value.copy(q.phase === "telegraph" ? new THREE.Vector3(2.2, 1.7, 0.6) : sg.children[0].material.uniforms.uColor.value);
+    }
+  }
+
+  return { active:active, set:set, init:init, apply:apply, frame:frame, grade:grade, bubble:bubble,
+           look:function(){ return look; }, dbg:function(){ return { U:U, R:R, CAMY:CAMY }; }, failed:function(){ return failed; },
+           start:function(){ if (look === "realistic") init(); else apply(); },
+           explore:explore, exploring:function(){ return !!(X && X.on); }, exFrame:exFrame, dbgX:function(){ return X; },
+           setQuality:setQuality, quality:function(){ return quality; }, qName:qName };
+})();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="window.__NO3D=1"></script>
 <script>
 "use strict";
@@ -1661,6 +3744,15 @@ document.querySelectorAll(".lenBtn").forEach(function(lb,i){
     document.querySelectorAll(".lenBtn").forEach(function(x){ x.classList.toggle("active", x===lb); });
   });
 });
+document.querySelectorAll(".lookTab").forEach(function(b){
+  b.addEventListener("click", function(){ Sound.unlock(); Realism.set(b.dataset.look); });
+});
+document.querySelectorAll(".qualTab").forEach(function(b){
+  b.addEventListener("click", function(){ Realism.setQuality(b.dataset.q); });
+});
+$("lookBtn").addEventListener("click", function(){ Sound.unlock(); Realism.set(Realism.active() ? "cartoon" : "realistic"); });
+Realism.start();
+$("exploreBtn").addEventListener("click", function(){ Sound.unlock(); Realism.explore(true); });
 $("cardBtn").addEventListener("click", function(){
   Sound.unlock();
   if (browseReturn){ setScreen(browseReturn); return; }
@@ -1931,7 +4023,7 @@ function drawSquid(ctx,q,t,now){
   ctx.translate(q.x, q.y + (q.phase==="tired" ? Math.sin(t*3)*2 : 0));
   if (q.phase==="telegraph") ctx.translate(Math.sin(t*50)*1.5, 0);
   ctx.rotate(q.ang);
-  if (now-q.hitAt < 300) ctx.globalAlpha = 0.55;
+  if (Realism.active()) ctx.globalAlpha = 0; else if (now-q.hitAt < 300) ctx.globalAlpha = 0.55;
   ctx.lineCap = "round"; ctx.lineJoin = "round";
   var limp = q.phase==="tired" ? 0.4 : 1;
   // two long feeding tentacles (behind the arms)
@@ -2135,7 +4227,7 @@ function drawDolphin(ctx,d,t,now){
   if (d.phase==="windup") ctx.translate(Math.sin(t*60)*2, 0); // revving up
   var tilt = d.phase==="charge" ? Math.atan2(d.dy, Math.abs(d.dx))*0.6 : Math.sin(t*2)*0.06;
   ctx.scale(d.face, 1); ctx.rotate(tilt);
-  if (now-d.hitAt < 300) ctx.globalAlpha = 0.55;
+  if (Realism.active()) ctx.globalAlpha = 0; else if (now-d.hitAt < 300) ctx.globalAlpha = 0.55;
   var tail = Math.sin(t*(d.phase==="charge" ? 22 : 9))*L*0.05;
   ctx.lineJoin = "round";
   // flukes
@@ -2271,6 +4363,7 @@ function drawPlankton(ctx,f,t){
 /* ---------- main loop ---------- */
 var last = performance.now();
 function loop(now){
+  if (Realism.exploring()){ Realism.exFrame(now); last = now; requestAnimationFrame(loop); return; }
   var dt = Math.min(0.033,(now-last)/1000); last = now;
   var t = now/1000;
   var zone = (g.abyss && g.abyssSpec) ? g.abyssSpec : ZONES[g.zone];
@@ -2516,69 +4609,76 @@ function loop(now){
 
   /* draw */
   ctx.setTransform(dpr,0,0,dpr,0,0);
+  var REAL = Realism.active();
+  if (REAL){ ctx.clearRect(0,0,W,H); Realism.frame(t, dt, g, sh, W, H, now, now < g.invulnUntil && !turbo); }
   if (now < g.shakeUntil) ctx.translate((Math.random()-0.5)*10, (Math.random()-0.5)*10);
-  var grad = ctx.createLinearGradient(0,0,0,H);
-  grad.addColorStop(0,zone.sky[0]);
-  grad.addColorStop(0.7,zone.sky[1]);
-  grad.addColorStop(1,zone.deep);
-  ctx.fillStyle = grad; ctx.fillRect(0,0,W,H);
+  if (!REAL){
+    var grad = ctx.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0,zone.sky[0]);
+    grad.addColorStop(0.7,zone.sky[1]);
+    grad.addColorStop(1,zone.deep);
+    ctx.fillStyle = grad; ctx.fillRect(0,0,W,H);
 
-  if (g.zone <= 4){
-    ctx.save(); ctx.globalAlpha = 0.1; ctx.fillStyle = "#FFFFFF";
-    for (var ri=0;ri<4;ri++){
-      var rx = ((ri*0.27+0.08)%1)*W + Math.sin(t*0.3+ri)*30;
-      ctx.beginPath(); ctx.moveTo(rx,-20); ctx.lineTo(rx+70,-20); ctx.lineTo(rx+190,H); ctx.lineTo(rx+60,H); ctx.closePath(); ctx.fill();
-    }
-    ctx.restore();
-  }
-  if (g.zone===0){
-    ctx.fillStyle = "rgba(6,60,80,0.55)";
-    for (var ci=0;ci<6;ci++){
-      var cx = (ci/6)*W+30;
-      ctx.beginPath(); ctx.arc(cx,H+24,34+(ci%3)*14,Math.PI,0); ctx.fill();
-      ctx.fillRect(cx-3,H-40-(ci%2)*16,6,60);
-    }
-  }
-  if (g.zone===1 || g.zone===2){
-    // sandy ripples
-    ctx.strokeStyle = "rgba(240,225,180,0.18)"; ctx.lineWidth = 3;
-    for (var wi=0;wi<5;wi++){
-      ctx.beginPath();
-      ctx.moveTo(0,H-14-wi*10);
-      for (var xx=0;xx<=W;xx+=40) ctx.lineTo(xx, H-14-wi*10 + Math.sin(xx*0.05+wi)*3);
-      ctx.stroke();
-    }
-  }
-  if (g.zone >= 7){
-    g.snow.forEach(function(s){
-      ctx.globalAlpha = 0.25+0.25*Math.sin(t+s.seed);
-      ctx.fillStyle = "rgba(255,255,255,0.5)";
-      ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
-    });
-    ctx.globalAlpha = 1;
-    if (g.zone===ZONES.length-1){
-      for (var li=0;li<8;li++){
-        var bx = ((li*0.131+t*0.008)%1)*W, by = ((li*0.37)%1)*H;
-        ctx.fillStyle = li%2 ? "rgba(89,245,208,0.5)" : "rgba(127,208,255,0.4)";
-        ctx.shadowColor = "#59F5D0"; ctx.shadowBlur = 8;
-        ctx.beginPath(); ctx.arc(bx,by+Math.sin(t+li)*10,1.6+(li%3),0,Math.PI*2); ctx.fill();
+    if (g.zone <= 4){
+      ctx.save(); ctx.globalAlpha = 0.1; ctx.fillStyle = "#FFFFFF";
+      for (var ri=0;ri<4;ri++){
+        var rx = ((ri*0.27+0.08)%1)*W + Math.sin(t*0.3+ri)*30;
+        ctx.beginPath(); ctx.moveTo(rx,-20); ctx.lineTo(rx+70,-20); ctx.lineTo(rx+190,H); ctx.lineTo(rx+60,H); ctx.closePath(); ctx.fill();
       }
-      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+    if (g.zone===0){
+      ctx.fillStyle = "rgba(6,60,80,0.55)";
+      for (var ci=0;ci<6;ci++){
+        var cx = (ci/6)*W+30;
+        ctx.beginPath(); ctx.arc(cx,H+24,34+(ci%3)*14,Math.PI,0); ctx.fill();
+        ctx.fillRect(cx-3,H-40-(ci%2)*16,6,60);
+      }
+    }
+    if (g.zone===1 || g.zone===2){
+      // sandy ripples
+      ctx.strokeStyle = "rgba(240,225,180,0.18)"; ctx.lineWidth = 3;
+      for (var wi=0;wi<5;wi++){
+        ctx.beginPath();
+        ctx.moveTo(0,H-14-wi*10);
+        for (var xx=0;xx<=W;xx+=40) ctx.lineTo(xx, H-14-wi*10 + Math.sin(xx*0.05+wi)*3);
+        ctx.stroke();
+      }
+    }
+    if (g.zone >= 7){
+      g.snow.forEach(function(s){
+        ctx.globalAlpha = 0.25+0.25*Math.sin(t+s.seed);
+        ctx.fillStyle = "rgba(255,255,255,0.5)";
+        ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+      if (g.zone===ZONES.length-1){
+        for (var li=0;li<8;li++){
+          var bx = ((li*0.131+t*0.008)%1)*W, by = ((li*0.37)%1)*H;
+          ctx.fillStyle = li%2 ? "rgba(89,245,208,0.5)" : "rgba(127,208,255,0.4)";
+          ctx.shadowColor = "#59F5D0"; ctx.shadowBlur = 8;
+          ctx.beginPath(); ctx.arc(bx,by+Math.sin(t+li)*10,1.6+(li%3),0,Math.PI*2); ctx.fill();
+        }
+        ctx.shadowBlur = 0;
+      }
     }
   }
 
-  ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = 1;
-  g.bubbles.forEach(function(b){ ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.stroke(); });
+  if (REAL) g.bubbles.forEach(function(b){ Realism.bubble(ctx,b); });
+  else {
+    ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = 1;
+    g.bubbles.forEach(function(b){ ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.stroke(); });
+  }
 
   g.fish.forEach(function(f){
-    if (f.type==="plankton") drawPlankton(ctx,f,t);
-    else drawFish(ctx,f,t,deepZone);
+    if (f.type==="plankton"){ if (!REAL) drawPlankton(ctx,f,t); }
+    else if (!REAL) drawFish(ctx,f,t,deepZone);
   });
   g.orbs.forEach(function(o){ drawOrb(ctx,o,t); });
   g.tunas.forEach(function(tn){ drawTuna(ctx,tn,t); });
   g.surprises.forEach(function(sp){ if (sp.type==="twins") drawTwins(ctx,sp,t); else drawChest(ctx,sp,t); });
-  g.jellies.forEach(function(j){ drawJelly(ctx,j,t,deepZone); });
-  g.snakes.forEach(function(sn){ drawSeaSnake(ctx,sn,t); });
+  if (!REAL) g.jellies.forEach(function(j){ drawJelly(ctx,j,t,deepZone); });
+  if (!REAL) g.snakes.forEach(function(sn){ drawSeaSnake(ctx,sn,t); });
   g.corals.forEach(function(c){ drawCoral(ctx,c,t); });
   if (g.duel) drawDolphin(ctx,g.duel,t,now);
   if (g.squid) drawSquid(ctx,g.squid,t,now);
@@ -2629,7 +4729,7 @@ function loop(now){
       ctx.beginPath(); ctx.arc(sh.x, sh.y, zone.len*0.58, 0, Math.PI*2); ctx.fill();
       ctx.restore();
     }
-    drawShark(ctx,sh.x,sh.y,sh.vx,sh.vy,t,zone,now < g.invulnUntil && !turbo);
+    if (!REAL) drawShark(ctx,sh.x,sh.y,sh.vx,sh.vy,t,zone,now < g.invulnUntil && !turbo);
     if (turbo){
       var frac = (g.turboUntil - now)/8000;
       ctx.strokeStyle = "#FFD166"; ctx.lineWidth = 4; ctx.lineCap = "round";
@@ -2639,6 +4739,7 @@ function loop(now){
     }
   }
 
+  if (REAL){ Realism.grade(ctx, t, W, H); }
   g.particles.forEach(function(p){
     ctx.globalAlpha = Math.max(0,p.life/0.6);
     ctx.fillStyle = p.color;
@@ -2751,7 +4852,7 @@ function drawOrb(ctx,o,t){
   var p = 1+Math.sin(t*4+o.seed)*0.12;
   ctx.shadowColor = spot ? "#B69CFF" : "#35E0C8"; ctx.shadowBlur = 22;
   ctx.fillStyle = spot ? "rgba(182,156,255,0.92)" : "rgba(53,224,200,0.9)";
-  ctx.beginPath(); ctx.arc(0,0,o.r*p,0,Math.PI*2); ctx.fill();
+  if (!Realism.active()){ ctx.beginPath(); ctx.arc(0,0,o.r*p,0,Math.PI*2); ctx.fill(); }
   ctx.shadowBlur = 0;
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   if (spot){
